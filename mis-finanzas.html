@@ -8,13 +8,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Mis Finanzas" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="description" content="App web de finanzas personales con Firebase, cuotas, fondo de emergencia e inversiones." />
+  <meta name="description" content="App web de finanzas personales con Supabase, cuotas, fondo de emergencia e inversiones." />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon.svg" />
   <title>Mis Finanzas</title>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{
       --bg:#fff7fb; --panel:#ffffff; --panel-soft:#fffafd;
@@ -124,30 +123,51 @@
       <div class="card-head">
         <div>
           <h2>Conectá tu app ✿</h2>
-          <p class="muted">Podés sincronizar entre dispositivos con Firebase o empezar en local.</p>
+          <p class="muted">Podés sincronizar entre dispositivos con Supabase o empezar en local.</p>
         </div>
         <span class="pill">Setup inicial</span>
       </div>
       <ol class="setup-steps">
-        <li>Creá un proyecto en Firebase Console.</li>
-        <li>Activá Realtime Database en modo de prueba.</li>
-        <li>Copiá la URL de la base de datos.</li>
+        <li>Creá un proyecto en Supabase.</li>
+        <li>En SQL Editor corré el script sugerido para crear la tabla.</li>
+        <li>Copiá tu Project URL y la anon/public key.</li>
         <li>Elegí un código personal para separar tus datos.</li>
       </ol>
       <div class="grid">
         <div class="large">
-          <label for="cfgUrl">URL de Firebase Realtime Database</label>
-          <input id="cfgUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com/" />
+          <label for="cfgUrl">Project URL de Supabase</label>
+          <input id="cfgUrl" placeholder="https://tu-proyecto.supabase.co" />
+        </div>
+        <div class="medium">
+          <label for="cfgKey">Anon / public key</label>
+          <input id="cfgKey" placeholder="eyJhbGciOi..." />
         </div>
         <div class="medium">
           <label for="cfgCode">Código personal</label>
           <input id="cfgCode" placeholder="ej. misfinanzas2026" />
         </div>
-        <div class="medium">
-          <label for="cfgHint">Qué vamos a probar</label>
-          <div class="status" id="cfgHint">Vamos a validar formato, leer el nodo de tu código y hacer una escritura de prueba segura antes de guardar.</div>
+        <div class="large">
+          <label for="cfgSql">SQL sugerido</label>
+          <div class="status" id="cfgSql" style="white-space:pre-wrap;font-family:Consolas,monospace">create table if not exists public.mf_states (
+  code text primary key,
+  payload jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.mf_states enable row level security;
+
+create policy "mf_states_public_rw" on public.mf_states
+for all
+using (true)
+with check (true);
+
+alter publication supabase_realtime add table public.mf_states;</div>
         </div>
-        <div class="large"><div id="cfgStatus" class="status">Esperando datos para probar la conexión.</div></div>
+        <div class="large">
+          <label for="cfgHint">Qué vamos a probar</label>
+          <div class="status" id="cfgHint">Vamos a validar URL y key, leer tu fila por código y hacer una escritura de prueba segura antes de guardar.</div>
+        </div>
+        <div class="large"><div id="cfgStatus" class="status">Esperando URL, key y código para probar la conexión.</div></div>
       </div>
       <div class="setup-actions">
         <button type="button" class="btn-soft" id="btnTestConnection">Probar conexión</button>
@@ -195,7 +215,8 @@
     const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
-    let data=clone(DEF),activeTab='inicio',saveTimer=null,fbApp=null,fbDB=null,fbRef=null,skipRemote=false,syncMode='local',liveConfig=loadConfig();
+    const SUPABASE_TABLE='mf_states';
+    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig();
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null};
     const $=(s)=>document.querySelector(s);
     const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
@@ -231,21 +252,20 @@
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
     function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
     function sync(type,text){const el=$('#syncState');el.textContent=text;el.dataset.state=type;}
-    function destroyFirebaseApp(){
-      if(fbRef){try{fbRef.off();}catch(err){}}
-      fbRef=null;fbDB=null;
-      try{if(window.firebase&&firebase.apps&&firebase.apps.length){firebase.apps.slice().forEach((app)=>{try{app.delete();}catch(err){}});}}catch(err){}
-      fbApp=null;
+    function destroySupabaseClient(){
+      if(sbChannel&&sbClient){try{sbClient.removeChannel(sbChannel);}catch(err){}}
+      if(sbPoller){clearInterval(sbPoller)}
+      sbClient=null;sbChannel=null;sbPoller=null;lastRemoteStamp='';activeCode='';
     }
     function normalizeDbUrl(url){
       const value=String(url||'').trim();
       if(!/^https:\/\/[a-z0-9.-]+\/?$/i.test(value))throw new Error('invalid-url');
       const finalUrl=value.endsWith('/')?value.slice(0,-1):value;
       const host=new URL(finalUrl).hostname;
-      if(!host.includes('firebaseio.com')&&!host.includes('firebasedatabase.app'))throw new Error('invalid-url');
+      if(!host.includes('supabase.co')&&!host.includes('supabase.in'))throw new Error('invalid-url');
       return finalUrl;
     }
-    function classifyFirebaseError(error){
+    function classifySupabaseError(error){
       const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
       if(error&&error.code==='invalid-url'||lower.includes('invalid-url'))return{code:'invalid-url',text:'La URL parece inválida. Pegá la URL completa de Realtime Database, por ejemplo `https://tu-proyecto-default-rtdb.firebaseio.com/`.'};
       if(lower.includes('permission_denied')||lower.includes('permission denied'))return{code:'permission-denied',text:'Firebase respondió pero las reglas están bloqueando la lectura o escritura. En Realtime Database abrí Rules y habilitá temporalmente lectura y escritura para probar.'};
@@ -313,6 +333,98 @@
       saveTimer=setTimeout(async()=>{try{skipRemote=true;await fbRef.set(data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifyFirebaseError(error).text);}},700);
     }
     function persistAndRender(opts={}){saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
+    function createSupabaseClient(url,key){
+      return window.supabase.createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+    }
+    function destroySupabaseClient(){
+      if(sbChannel&&sbClient){try{sbClient.removeChannel(sbChannel);}catch(err){}}
+      if(sbPoller){clearInterval(sbPoller)}
+      sbClient=null;sbChannel=null;sbPoller=null;lastRemoteStamp='';activeCode='';
+    }
+    function classifySupabaseError(error){
+      const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
+      if(error&&error.code==='invalid-url'||lower.includes('invalid-url'))return{code:'invalid-url',text:'La URL parece invalida. Pega la Project URL completa de Supabase, por ejemplo `https://tu-proyecto.supabase.co`.'};
+      if(lower.includes('invalid api key')||lower.includes('invalid apikey')||lower.includes('apikey')||lower.includes('jwt'))return{code:'invalid-key',text:'La anon/public key parece invalida. Copiala desde Project Settings > API en Supabase.'};
+      if(lower.includes('permission denied')||lower.includes('row-level security')||lower.includes('violates row-level security'))return{code:'permission-denied',text:'Supabase respondio, pero las politicas estan bloqueando `mf_states`. Corre el SQL sugerido del setup.'};
+      if(lower.includes('relation')&&lower.includes('mf_states'))return{code:'missing-table',text:'No encontramos la tabla `mf_states`. Corre el SQL sugerido en Supabase SQL Editor.'};
+      if(lower.includes('network')||lower.includes('failed to fetch')||lower.includes('cors')||lower.includes('offline'))return{code:'network',text:'No pudimos llegar a Supabase. Revisa conexion, firewall o si la URL esta siendo bloqueada por red/CORS.'};
+      if(lower.includes('404')||lower.includes('not found')||lower.includes('project'))return{code:'project-not-found',text:'No encontramos ese proyecto de Supabase. Confirma la Project URL y que el proyecto siga activo.'};
+      return{code:'unknown',text:'No se pudo validar la configuracion de Supabase. Revisa URL, anon key, tabla `mf_states` y politicas.'};
+    }
+    async function connectSupabase(url,key,code){
+      destroySupabaseClient();
+      const dbURL=normalizeDbUrl(url),safeCode=sanitize(code),apiKey=String(key||'').trim();
+      if(!safeCode)throw new Error('missing-code');
+      if(!apiKey)throw new Error('missing-key');
+      sbClient=createSupabaseClient(dbURL,apiKey);
+      activeCode=safeCode;
+      return{client:sbClient,dbURL,safeCode,apiKey};
+    }
+    async function readRemoteRow(client,code){
+      const { data: row, error } = await client.from(SUPABASE_TABLE).select('code,payload,updated_at').eq('code',code).maybeSingle();
+      if(error)throw error;
+      return row;
+    }
+    async function writeRemoteRow(client,code,payload){
+      const stamp=new Date().toISOString();
+      const { error } = await client.from(SUPABASE_TABLE).upsert({code,payload,updated_at:stamp},{onConflict:'code'});
+      if(error)throw error;
+      lastRemoteStamp=stamp;
+      return stamp;
+    }
+    async function testSupabaseConnection(url,key,code){
+      let connection;
+      try{connection=await connectSupabase(url,key,code);}catch(error){
+        if(String(error.message||error).includes('missing-code'))return{ok:false,code:'missing-code',text:'Elegi un codigo personal antes de probar la conexion.'};
+        if(String(error.message||error).includes('missing-key'))return{ok:false,code:'missing-key',text:'Pega la anon/public key antes de probar la conexion.'};
+        return{ok:false,...classifySupabaseError(error)};
+      }
+      const client=connection.client,probeCode=`probe_${connection.safeCode}_${Date.now()}`,payload={ts:Date.now(),ok:true};
+      try{
+        await writeRemoteRow(client,probeCode,payload);
+        const row=await readRemoteRow(client,probeCode);
+        const value=row&&row.payload;
+        try{await client.from(SUPABASE_TABLE).delete().eq('code',probeCode);}catch(err){}
+        if(!value||value.ts!==payload.ts)return{ok:false,code:'unexpected-response',text:'Supabase respondio, pero la lectura de prueba no devolvio lo esperado. Revisa tabla, politicas y datos.'};
+        return{ok:true,code:'ok',text:'Conexion exitosa. Pudimos leer y escribir en Supabase sin problemas.',meta:connection};
+      }catch(error){return{ok:false,...classifySupabaseError(error)};}
+    }
+    async function guardarConfig(){
+      const url=$('#cfgUrl').value.trim(),key=$('#cfgKey').value.trim(),code=$('#cfgCode').value.trim();
+      setStatus('warn','Probando conexion y guardando configuracion...');
+      const result=await testSupabaseConnection(url,key,code);
+      if(!result.ok){setStatus('err',result.text);sync('err','Error de configuracion');return;}
+      saveConfig({url:normalizeDbUrl(url),key,code});
+      data=loadLocal();
+      $('#setupOverlay').classList.add('hidden');
+      setStatus('ok','Configuracion guardada. La app quedo lista para sincronizar.');
+      initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);setStatus('err',info.text);sync('err','No se pudo activar la sincronizacion');});
+    }
+    async function probarConexion(){
+      setStatus('warn','Probando lectura y escritura en Supabase...');
+      const result=await testSupabaseConnection($('#cfgUrl').value.trim(),$('#cfgKey').value.trim(),$('#cfgCode').value.trim());
+      setStatus(result.ok?'ok':'err',result.text);
+    }
+    function modoLocal(){
+      destroySupabaseClient();clearConfig();syncMode='local';sync('warn','Modo local activo');
+      setStatus('ok','La app va a funcionar en este dispositivo usando localStorage.');
+      $('#setupOverlay').classList.add('hidden');persistAndRender({localOnly:true});
+    }
+    async function initRealtimeSync(){
+      if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
+      const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
+      syncMode='remote';sync('warn','Sincronizando con Supabase...');
+      const remote=await readRemoteRow(client,safeCode);
+      if(remote&&remote.payload){data=mergeWithDefaults(remote.payload);lastRemoteStamp=remote.updated_at||'';saveLocal();}else{await writeRemoteRow(client,safeCode,data);}
+      sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{if(skipRemote){skipRemote=false;return;}if(payload.new&&payload.new.payload){lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;data=mergeWithDefaults(payload.new.payload);saveLocal();renderAll();sync('ok','Cambios recibidos desde Supabase');}}).subscribe();
+      sbPoller=setInterval(async()=>{try{const row=await readRemoteRow(client,safeCode);if(row&&row.updated_at&&row.updated_at!==lastRemoteStamp&&!skipRemote){lastRemoteStamp=row.updated_at;data=mergeWithDefaults(row.payload||{});saveLocal();renderAll();sync('ok','Cambios actualizados');}}catch(error){}},15000);
+      sync('ok','Sincronizacion activa');renderAll();
+    }
+    function queueRemoteSave(){
+      if(syncMode!=='remote'||!sbClient||!activeCode)return;
+      clearTimeout(saveTimer);
+      saveTimer=setTimeout(async()=>{try{skipRemote=true;await writeRemoteRow(sbClient,activeCode,data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifySupabaseError(error).text);}},700);
+    }
     function movimientoMontoMes(mov,month){
       const monto=parseNum(mov.monto);
       if(mov.tipo!=='gasto')return monto;
@@ -647,9 +759,9 @@
       initStaticEvents();
       registerServiceWorker();
       fetchBlueRate();
-      if(liveConfig&&liveConfig.url&&liveConfig.code){
-        $('#cfgUrl').value=liveConfig.url;$('#cfgCode').value=liveConfig.code;$('#setupOverlay').classList.add('hidden');
-        initRealtimeSync().catch((error)=>{const info=classifyFirebaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
+      if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
+        $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;$('#setupOverlay').classList.add('hidden');
+        initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
       }else{$('#setupOverlay').classList.remove('hidden');sync('warn','Configuración pendiente');}
       const movFecha=$('#movFecha');if(movFecha)movFecha.value=new Date().toISOString().slice(0,10);
     }
@@ -659,7 +771,7 @@
       if(protocol!=='https:'&&window.location.hostname!=='localhost'&&window.location.hostname!=='127.0.0.1')return;
       window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});},{once:true});
     }
-    window.addEventListener('beforeunload',()=>destroyFirebaseApp());
+    window.addEventListener('beforeunload',()=>destroySupabaseClient());
     init();
   </script>
 </body>
