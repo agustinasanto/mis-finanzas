@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#fff9fc"/>
+      <stop offset="55%" stop-color="#ffeef6"/>
+      <stop offset="100%" stop-color="#fff5fa"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#g)"/>
+  <rect x="72" y="78" width="368" height="356" rx="56" fill="#ffffff" stroke="#f1d8e4" stroke-width="14"/>
+  <circle cx="164" cy="172" r="26" fill="#f7d1e3"/>
+  <circle cx="256" cy="172" r="26" fill="#f1b9d3"/>
+  <circle cx="348" cy="172" r="26" fill="#e78db7"/>
+  <path d="M136 304c28-44 76-72 120-72s92 28 120 72" fill="none" stroke="#e78db7" stroke-width="28" stroke-linecap="round"/>
+  <path d="M154 360h204" stroke="#f1d8e4" stroke-width="18" stroke-linecap="round"/>
+  <text x="256" y="430" text-anchor="middle" font-size="64" font-family="Segoe UI, sans-serif" fill="#5f4654">MF</text>
+</svg>

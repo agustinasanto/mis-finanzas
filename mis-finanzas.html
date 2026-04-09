@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#fff7fb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mis Finanzas" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="App web de finanzas personales con Firebase, cuotas, fondo de emergencia e inversiones." />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <title>Mis Finanzas</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    :root{
+      --bg:#fff7fb; --panel:#ffffff; --panel-soft:#fffafd;
+      --pink:#f7d1e3; --pink-2:#f1b9d3; --pink-3:#e78db7; --pink-4:#fff0f6;
+      --text:#5f4654; --muted:#90707f; --line:#f1d8e4;
+      --ok:#d9f0df; --warn:#ffe5bd; --danger:#ffd8e2;
+      --shadow:0 18px 44px rgba(231,141,183,.12);
+      --radius:24px;
+      --gap:18px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;font-family:"Segoe UI",sans-serif;background:linear-gradient(180deg,#fff9fc,#ffeef6 50%,#fff5fa);color:var(--text)}
+    body{min-height:100vh;position:relative}
+    body::before,body::after{content:"✿ ❀ ❁";position:fixed;font-size:44px;letter-spacing:18px;color:rgba(231,141,183,.13);pointer-events:none;z-index:0}
+    body::before{top:20px;left:18px}
+    body::after{right:22px;bottom:18px}
+    button,input,select,textarea{font:inherit;color:inherit}
+    button{border:none;border-radius:999px;background:var(--pink-2);color:#6c4359;padding:11px 16px;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease;box-shadow:0 10px 24px rgba(231,141,183,.16)}
+    button:hover{transform:translateY(-1px)}
+    button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+    .btn-soft{background:var(--pink-4);box-shadow:none;border:1px solid var(--line)}
+    .btn-ok{background:var(--ok)}
+    .btn-warn{background:var(--warn)}
+    .btn-danger{background:var(--danger)}
+    input,select,textarea{width:100%;border:1px solid var(--line);background:#fff;border-radius:16px;padding:12px 14px;outline:none}
+    input:focus,select:focus,textarea:focus{border-color:var(--pink-3);box-shadow:0 0 0 3px rgba(231,141,183,.13)}
+    textarea{min-height:92px;resize:vertical}
+    .app{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:18px 16px 110px}
+    .topbar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;margin-bottom:18px;border:1px solid rgba(241,216,228,.9);border-radius:24px;background:rgba(255,247,251,.88);backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+    .brand h1{margin:0;font-size:1.32rem}
+    .brand p{margin:3px 0 0;color:var(--muted);font-size:.93rem}
+    .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .sync-pill{padding:10px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:.92rem;min-width:190px;text-align:center}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab-btn{background:var(--panel-soft);border:1px solid var(--line);box-shadow:none;padding:10px 14px}
+    .tab-btn.active{background:var(--pink);border-color:transparent}
+    .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gap)}
+    .small{grid-column:span 3}
+    .medium{grid-column:span 6}
+    .large{grid-column:span 12}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:18px}
+    .card h2,.card h3{margin:0 0 10px}
+    .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .kpi{background:var(--panel-soft);border:1px solid var(--line);border-radius:22px;padding:16px;min-height:118px;display:flex;flex-direction:column;justify-content:space-between}
+    .kpi strong{font-size:1.7rem}
+    .kpi span{color:var(--muted)}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .list-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:18px;border:1px solid var(--line);background:var(--panel-soft)}
+    .list-item strong,.list-item span{display:block}
+    .hint{font-size:.92rem;color:var(--muted)}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:.95rem}
+    th,td{padding:11px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    th{color:var(--muted);font-weight:600}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--pink-4);border:1px solid var(--line);font-size:.85rem}
+    .progress{width:100%;height:14px;border-radius:999px;background:#f8ecf2;overflow:hidden;border:1px solid var(--line)}
+    .progress>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--pink-2),var(--pink-3))}
+    .status{border-radius:18px;padding:12px 14px;font-size:.93rem;border:1px solid var(--line);background:var(--panel-soft)}
+    .status.ok{background:rgba(217,240,223,.62)}
+    .status.warn{background:rgba(255,229,189,.58)}
+    .status.err{background:rgba(255,216,226,.66)}
+    .inline-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+    .section{display:none}
+    .section.active{display:block}
+    .overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(255,245,250,.68);backdrop-filter:blur(8px)}
+    .overlay.hidden{display:none}
+    .overlay-card{width:min(760px,100%);max-height:calc(100vh - 36px);overflow:auto;padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:28px;box-shadow:0 24px 60px rgba(95,70,84,.12)}
+    .setup-steps{margin:16px 0;padding-left:18px;color:var(--muted)}
+    .setup-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+    .calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+    .cal-head,.cal-day{border-radius:18px;border:1px solid var(--line);background:var(--panel-soft);padding:10px;min-height:92px}
+    .cal-head{min-height:auto;text-align:center;font-weight:600;color:var(--muted)}
+    .cal-day.empty{opacity:.35}
+    .day-number{font-weight:700;margin-bottom:6px}
+    .event{display:block;margin-top:6px;padding:5px 7px;border-radius:12px;background:#fff;border:1px solid var(--line);font-size:.8rem}
+    .fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:25;width:62px;height:62px;border-radius:999px;font-size:2rem;line-height:1;padding:0}
+    .modal{position:fixed;inset:0;z-index:35;display:flex;align-items:flex-end;justify-content:center;background:rgba(255,245,250,.48);backdrop-filter:blur(6px);padding:18px}
+    .modal.hidden{display:none}
+    .modal-card{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:28px;padding:18px;box-shadow:0 20px 50px rgba(95,70,84,.12)}
+    canvas{width:100%;height:280px;background:var(--panel-soft);border:1px solid var(--line);border-radius:22px}
+    @media (max-width:900px){
+      .small,.medium,.large{grid-column:span 12}
+      .topbar{padding:12px}
+      .calendar{grid-template-columns:repeat(7,minmax(110px,1fr));overflow:auto}
+    }
+    @media (max-width:640px){
+      .app{padding:12px 12px 108px}
+      .topbar{border-radius:20px;top:8px}
+      .brand{width:100%}
+      .top-actions{width:100%;justify-content:stretch}
+      .sync-pill{min-width:0;width:100%}
+      .tabs{flex-wrap:nowrap;overflow:auto;padding-bottom:2px;scrollbar-width:none;width:100%}
+      .tabs::-webkit-scrollbar{display:none}
+      .tab-btn{flex:0 0 auto;white-space:nowrap}
+      .card,.overlay-card,.modal-card{border-radius:22px;padding:16px}
+      .setup-actions{flex-direction:column}
+      .setup-actions button{width:100%}
+      .list-item{padding:11px 12px}
+      table{font-size:.9rem}
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay" id="setupOverlay">
+    <div class="overlay-card">
+      <div class="card-head">
+        <div>
+          <h2>Conectá tu app ✿</h2>
+          <p class="muted">Podés sincronizar entre dispositivos con Firebase o empezar en local.</p>
+        </div>
+        <span class="pill">Setup inicial</span>
+      </div>
+      <ol class="setup-steps">
+        <li>Creá un proyecto en Firebase Console.</li>
+        <li>Activá Realtime Database en modo de prueba.</li>
+        <li>Copiá la URL de la base de datos.</li>
+        <li>Elegí un código personal para separar tus datos.</li>
+      </ol>
+      <div class="grid">
+        <div class="large">
+          <label for="cfgUrl">URL de Firebase Realtime Database</label>
+          <input id="cfgUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com/" />
+        </div>
+        <div class="medium">
+          <label for="cfgCode">Código personal</label>
+          <input id="cfgCode" placeholder="ej. misfinanzas2026" />
+        </div>
+        <div class="medium">
+          <label for="cfgHint">Qué vamos a probar</label>
+          <div class="status" id="cfgHint">Vamos a validar formato, leer el nodo de tu código y hacer una escritura de prueba segura antes de guardar.</div>
+        </div>
+        <div class="large"><div id="cfgStatus" class="status">Esperando datos para probar la conexión.</div></div>
+      </div>
+      <div class="setup-actions">
+        <button type="button" class="btn-soft" id="btnTestConnection">Probar conexión</button>
+        <button type="button" id="btnSaveConfig">Conectar y empezar ✿</button>
+        <button type="button" class="btn-soft" id="btnLocalMode">Usar solo en este dispositivo →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="quickModal">
+    <div class="modal-card">
+      <div class="card-head">
+        <div><h3>Carga rápida</h3><p class="muted">Guardá un movimiento sin salir de donde estás.</p></div>
+        <button type="button" class="btn-soft" id="closeQuickModal">Cerrar</button>
+      </div>
+      <form id="quickForm" class="grid">
+        <div class="medium"><label for="quickMonto">Monto</label><input id="quickMonto" type="number" min="0" step="0.01" required /></div>
+        <div class="medium"><label for="quickTipo">Tipo</label><select id="quickTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
+        <div class="medium"><label for="quickCategoria">Categoría</label><select id="quickCategoria"></select></div>
+        <div class="medium"><label for="quickForma">Forma</label><select id="quickForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
+        <div class="medium" id="quickCuentaWrap"><label for="quickCuenta">Tarjeta / cuenta</label><input id="quickCuenta" placeholder="ej. Visa" /></div>
+        <div class="medium" id="quickCuotasWrap"><label for="quickCuotas">Cantidad de cuotas</label><input id="quickCuotas" type="number" min="2" value="3" /></div>
+        <div class="large"><button type="submit">Guardar y cerrar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <button type="button" class="fab" id="fabQuick" aria-label="Cargar movimiento rápido">+</button>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Mis Finanzas</h1>
+        <p>Organizá gastos, cuotas, inversiones y metas sin perder de vista el mes.</p>
+      </div>
+      <div class="top-actions">
+        <div class="sync-pill" id="syncState">Modo local activo</div>
+        <div class="tabs" id="tabs"></div>
+      </div>
+    </header>
+    <main id="sections"></main>
+  </div>
+
+  <script>
+    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
+    const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
+    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
+    let data=clone(DEF),activeTab='inicio',saveTimer=null,fbApp=null,fbDB=null,fbRef=null,skipRemote=false,syncMode='local',liveConfig=loadConfig();
+    let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null};
+    const $=(s)=>document.querySelector(s);
+    const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
+    const fmtDate=(v)=>{if(!v)return'Sin fecha';const d=new Date(v+'T00:00:00');return Number.isNaN(d.getTime())?v:d.toLocaleDateString('es-AR');};
+    const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+    const sanitize=(v)=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const parseNum=(v)=>Number(v||0);
+    const monthKey=(value)=>{const d=value?new Date(value+'T00:00:00'):new Date();return d.toISOString().slice(0,7);};
+    const currentMonth=monthKey();
+    const addMonths=(base,offset)=>{const [y,m]=base.split('-').map(Number);return new Date(y,m-1+offset,1).toISOString().slice(0,7);};
+    const monthLabel=(key)=>{const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});};
+    const escapeHTML=(str)=>String(str??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    function clone(v){return JSON.parse(JSON.stringify(v));}
+    function mergeWithDefaults(raw){
+      const src=raw&&typeof raw==='object'?raw:{},next=clone(DEF);
+      next.categorias=Array.isArray(src.categorias)&&src.categorias.length?src.categorias:clone(DEF.categorias);
+      next.movimientos=Array.isArray(src.movimientos)?src.movimientos:[];
+      next.presupuestos=src.presupuestos&&typeof src.presupuestos==='object'?src.presupuestos:{};
+      next.inversiones=Array.isArray(src.inversiones)?src.inversiones:[];
+      next.planes=Array.isArray(src.planes)?src.planes:[];
+      next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado)}:{basicos:0,ahorrado:0};
+      next.metas=Array.isArray(src.metas)?src.metas:[];
+      next.metodo=src.metodo&&typeof src.metodo==='object'?{
+        nombre:src.metodo.nombre||DEF.metodo.nombre,
+        items:Array.isArray(src.metodo.items)&&src.metodo.items.length?src.metodo.items.map((item,idx)=>({id:item.id||`item_${idx}`,nombre:item.nombre||`Bloque ${idx+1}`,porcentaje:parseNum(item.porcentaje),color:item.color||DEF.metodo.items[idx]?.color||'var(--pink-2)'})):clone(DEF.metodo.items)
+      }:clone(DEF.metodo);
+      return next;
+    }
+    function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
+    function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
+    function loadConfig(){try{return JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');}catch(err){return null;}}
+    function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
+    function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
+    function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
+    function sync(type,text){const el=$('#syncState');el.textContent=text;el.dataset.state=type;}
+    function destroyFirebaseApp(){
+      if(fbRef){try{fbRef.off();}catch(err){}}
+      fbRef=null;fbDB=null;
+      try{if(window.firebase&&firebase.apps&&firebase.apps.length){firebase.apps.slice().forEach((app)=>{try{app.delete();}catch(err){}});}}catch(err){}
+      fbApp=null;
+    }
+    function normalizeDbUrl(url){
+      const value=String(url||'').trim();
+      if(!/^https:\/\/[a-z0-9.-]+\/?$/i.test(value))throw new Error('invalid-url');
+      const finalUrl=value.endsWith('/')?value.slice(0,-1):value;
+      const host=new URL(finalUrl).hostname;
+      if(!host.includes('firebaseio.com')&&!host.includes('firebasedatabase.app'))throw new Error('invalid-url');
+      return finalUrl;
+    }
+    function classifyFirebaseError(error){
+      const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
+      if(error&&error.code==='invalid-url'||lower.includes('invalid-url'))return{code:'invalid-url',text:'La URL parece inválida. Pegá la URL completa de Realtime Database, por ejemplo `https://tu-proyecto-default-rtdb.firebaseio.com/`.'};
+      if(lower.includes('permission_denied')||lower.includes('permission denied'))return{code:'permission-denied',text:'Firebase respondió pero las reglas están bloqueando la lectura o escritura. En Realtime Database abrí Rules y habilitá temporalmente lectura y escritura para probar.'};
+      if(lower.includes('network')||lower.includes('failed to fetch')||lower.includes('cors')||lower.includes('offline'))return{code:'network',text:'No pudimos llegar a Firebase. Revisá conexión, firewall o si la URL está siendo bloqueada por CORS/red.'};
+      if(lower.includes('404')||lower.includes('not found')||lower.includes('project')||lower.includes('does not exist'))return{code:'project-not-found',text:'No encontramos ese proyecto o la base no está inicializada. Confirmá que la URL sea la de Realtime Database y que la base ya exista en Firebase.'};
+      return{code:'unknown',text:'No se pudo validar la configuración. Revisá la URL, que Realtime Database exista y que las reglas permitan probar lectura y escritura.'};
+    }
+    async function connectFB(url,code){
+      destroyFirebaseApp();
+      const dbURL=normalizeDbUrl(url),safeCode=sanitize(code);
+      if(!safeCode)throw new Error('missing-code');
+      fbApp=firebase.initializeApp({apiKey:'mis-finanzas-local',authDomain:'mis-finanzas.local',databaseURL:dbURL,projectId:'mis-finanzas'});
+      fbDB=firebase.database();fbRef=fbDB.ref(`u/${safeCode}/d`);
+      return{ref:fbRef,dbURL,safeCode};
+    }
+    async function testFirebaseConnection(url,code){
+      let connection;
+      try{connection=await connectFB(url,code);}catch(error){
+        if(String(error.message||error).includes('missing-code'))return{ok:false,code:'missing-code',text:'Elegí un código personal antes de probar la conexión.'};
+        return{ok:false,...classifyFirebaseError(error)};
+      }
+      const ref=connection.ref,probeKey='__probe__',payload={ts:Date.now(),ok:true};
+      try{
+        await ref.child(probeKey).set(payload);
+        const snap=await ref.child(probeKey).once('value');
+        const value=snap.val();
+        await ref.child(probeKey).remove();
+        if(!value||value.ts!==payload.ts)return{ok:false,code:'unexpected-response',text:'Firebase respondió, pero la lectura de prueba no devolvió lo esperado. Revisá reglas y la URL de la base.'};
+        return{ok:true,code:'ok',text:'Conexión exitosa. Pudimos leer y escribir en tu nodo sin problemas.',meta:connection};
+      }catch(error){return{ok:false,...classifyFirebaseError(error)};}
+    }
+    async function guardarConfig(){
+      const url=$('#cfgUrl').value.trim(),code=$('#cfgCode').value.trim();
+      setStatus('warn','Probando conexión y guardando configuración...');
+      const result=await testFirebaseConnection(url,code);
+      if(!result.ok){setStatus('err',result.text);sync('err','Error de configuración');return;}
+      saveConfig({url:normalizeDbUrl(url),code});
+      data=loadLocal();
+      $('#setupOverlay').classList.add('hidden');
+      setStatus('ok','Configuración guardada. La app quedó lista para sincronizar.');
+      initRealtimeSync().catch((error)=>{const info=classifyFirebaseError(error);setStatus('err',info.text);sync('err','No se pudo activar la sincronización');});
+    }
+    async function probarConexion(){
+      setStatus('warn','Probando lectura y escritura en Firebase...');
+      const result=await testFirebaseConnection($('#cfgUrl').value.trim(),$('#cfgCode').value.trim());
+      setStatus(result.ok?'ok':'err',result.text);
+    }
+    function modoLocal(){
+      destroyFirebaseApp();clearConfig();syncMode='local';sync('warn','Modo local activo');
+      setStatus('ok','La app va a funcionar en este dispositivo usando localStorage.');
+      $('#setupOverlay').classList.add('hidden');persistAndRender({localOnly:true});
+    }
+    async function initRealtimeSync(){
+      if(!liveConfig||!liveConfig.url||!liveConfig.code){syncMode='local';sync('warn','Modo local activo');return;}
+      const {ref}=await connectFB(liveConfig.url,liveConfig.code);
+      syncMode='remote';sync('warn','Sincronizando con Firebase...');
+      const snap=await ref.once('value'),remote=snap.val();
+      if(remote){data=mergeWithDefaults(remote);saveLocal();}else{await ref.set(data);}
+      ref.on('value',(nextSnap)=>{if(skipRemote){skipRemote=false;return;}const incoming=nextSnap.val();if(incoming){data=mergeWithDefaults(incoming);saveLocal();renderAll();}},(error)=>sync('err',classifyFirebaseError(error).text));
+      sync('ok','Sincronización activa');renderAll();
+    }
+    function queueRemoteSave(){
+      if(syncMode!=='remote'||!fbRef)return;
+      clearTimeout(saveTimer);
+      saveTimer=setTimeout(async()=>{try{skipRemote=true;await fbRef.set(data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifyFirebaseError(error).text);}},700);
+    }
+    function persistAndRender(opts={}){saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
+    function movimientoMontoMes(mov,month){
+      const monto=parseNum(mov.monto);
+      if(mov.tipo!=='gasto')return monto;
+      if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>1){const cuota=monto/parseNum(mov.cuotas);return cuotaMonthKeys(mov).includes(month)?cuota:0;}
+      return monthKey(mov.fecha)===month?monto:0;
+    }
+    function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[monthKey(mov.fecha)];const base=monthKey(mov.fecha);return Array.from({length:total},(_,i)=>addMonths(base,i));}
+    function activeInstallmentsForMonth(month){
+      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month);return idx===-1?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha};}).filter(Boolean);
+    }
+    function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total);return Math.max(0,total-actual+1);}
+    function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
+    function latestMovimientos(limit=8){return[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,limit);}
+    function gastosPorCategoriaMes(month){const out={};data.movimientos.forEach((m)=>{if(m.tipo!=='gasto')return;const value=movimientoMontoMes(m,month);if(!value)return;out[m.categoria]=(out[m.categoria]||0)+value;});return out;}
+    function presupuestoRows(){return data.categorias.map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
+    function deriveMetrics(){
+      const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
+      const gastosMes=data.movimientos.filter((m)=>m.tipo==='gasto'&&monthKey(m.fecha)<=addMonths(currentMonth,12)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
+      const cuotasMes=activeInstallmentsForMonth(currentMonth).reduce((acc,item)=>acc+item.montoCuota,0),saldo=ingresosMes-gastosMes,fondoMeta=parseNum(data.fondo.basicos)*6,fondoPct=fondoMeta?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/fondoMeta*100)):0;
+      return{ingresosMes,gastosMes,cuotasMes,saldo,fondoMeta,fondoPct};
+    }
+    function deriveMonthProjection(){
+      const metrics=deriveMetrics();
+      const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
+      const planesMes=data.planes.filter((p)=>p.mes===currentMonth).reduce((acc,p)=>acc+parseNum(p.costo),0);
+      const hoy=new Date(),finMes=new Date(hoy.getFullYear(),hoy.getMonth()+1,0);
+      const diasRestantes=Math.max(1,finMes.getDate()-hoy.getDate()+1);
+      const yaComprometido=metrics.gastosMes+inversionesMes;
+      const comprometidoTotal=yaComprometido+planesMes;
+      const cierreEstimado=metrics.ingresosMes-comprometidoTotal;
+      const margenHoy=metrics.ingresosMes-yaComprometido;
+      const margenDiario=diasRestantes?cierreEstimado/diasRestantes:0;
+      const comprometidoPct=metrics.ingresosMes?Math.round(comprometidoTotal/metrics.ingresosMes*100):0;
+      let estado='ok',mensaje='Vas cerrando el mes con margen.';
+      if(metrics.ingresosMes===0) { estado='warn'; mensaje='Todavía no hay ingresos cargados para proyectar el cierre del mes.'; }
+      else if(cierreEstimado<0) { estado='err'; mensaje='Si seguís así y además concretás lo planeado, cerrarías el mes en negativo.'; }
+      else if(comprometidoPct>=85) { estado='warn'; mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.'; }
+      return{...metrics,inversionesMes,planesMes,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,estado,mensaje};
+    }
+    function deriveMetodoMensual(){
+      const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
+      const totalPct=(data.metodo?.items||[]).reduce((acc,item)=>acc+parseNum(item.porcentaje),0);
+      const gastosBasicos=presupuestoRows().reduce((acc,row)=>acc+row.gastado,0);
+      const ahorroActual=parseNum(data.fondo.ahorrado);
+      const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
+      const items=(data.metodo?.items||[]).map((item)=>({
+        ...item,
+        porcentaje:parseNum(item.porcentaje),
+        montoObjetivo:ingresosMes*(parseNum(item.porcentaje)/100)
+      }));
+      const usados={
+        fijos:gastosBasicos,
+        ahorro:ahorroActual,
+        inversion:inversionesMes
+      };
+      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'Método mensual'};
+    }
+    function autoAlerts(){
+      const metrics=deriveMetrics(),alerts=[];
+      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenés ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
+      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya superó el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
+      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitás ahorrar ${fmtMoney(need)} por mes.`});});
+      if(!alerts.length)alerts.push({type:'ok',text:'Sin alertas urgentes. El mes viene bajo control.'});
+      return alerts;
+    }
+    async function fetchBlueRate(){
+      try{blueState.status='loading';const res=await fetch(BLUE_URL,{cache:'no-store'});if(!res.ok)throw new Error('api-failed');const json=await res.json();blueState={status:'ok',compra:Number(json.compra||0),venta:Number(json.venta||0),fecha:json.fechaActualizacion||'',fetchedAt:new Date().toISOString()};}
+      catch(err){blueState={status:'error',compra:null,venta:null,fecha:'',fetchedAt:null};}
+      if(activeTab==='inicio')renderAll();
+    }
+    function createTabs(){
+      $('#tabs').innerHTML=TAB_LIST.map(([id,label])=>`<button type="button" class="tab-btn ${activeTab===id?'active':''}" data-tab="${id}">${label}</button>`).join('');
+      $('#tabs').addEventListener('click',(event)=>{const btn=event.target.closest('[data-tab]');if(!btn)return;activeTab=btn.dataset.tab;renderSections();});
+    }
+    function renderSections(){
+      document.querySelectorAll('.section').forEach((section)=>section.classList.toggle('active',section.dataset.section===activeTab));
+      document.querySelectorAll('.tab-btn').forEach((btn)=>btn.classList.toggle('active',btn.dataset.tab===activeTab));
+      if(activeTab==='inicio')drawChart();
+      if(activeTab==='calendario')renderCalendario();
+    }
+    const sectionTemplate=(id,inner)=>`<section class="section ${activeTab===id?'active':''}" data-section="${id}"><div class="grid">${inner}</div></section>`;
+    function renderInicio(){
+      const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection();
+      const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,6);
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotización blue.</span></div></div>`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.gastosMes)} gastos</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Incluye impacto de cuotas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automáticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Últimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
+        <div class="large card">
+          <div class="card-head"><h2>Proyección de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
+          <div class="inline-fields" style="margin-top:12px">
+            <div class="list-item"><div><strong>Ya comprometido</strong><span>Gastos cargados + inversiones del mes</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
+            <div class="list-item"><div><strong>Planeado pendiente</strong><span>Compras objetivo para este mes</span></div><div><strong>${fmtMoney(projection.planesMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Cierre estimado</strong><span>Ingreso menos compromisos y planes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
+            <div class="list-item"><div><strong>Margen diario</strong><span>${projection.diasRestantes} días para cerrar el mes</span></div><div><strong>${fmtMoney(projection.margenDiario)}</strong></div></div>
+          </div>
+          <div class="list" style="margin-top:12px">
+            <div class="list-item"><div><strong>Ingresos cargados</strong><span>${fmtMoney(projection.ingresosMes)}</span></div><div><strong>${projection.comprometidoPct}%</strong><span class="muted">del ingreso comprometido</span></div></div>
+            <div class="list-item"><div><strong>Inversiones del mes</strong><span>${fmtMoney(projection.inversionesMes)}</span></div><div><strong>Margen hoy</strong><span class="muted">${fmtMoney(projection.margenHoy)}</span></div></div>
+          </div>
+        </div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoría</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
+        <div class="medium card"><div class="card-head"><h2>Próximos compromisos</h2><span class="pill">Cuotas y planes</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card">
+          <div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div>
+          <div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div>
+          <div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div>
+          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresá un monto para convertir usando dólar blue venta/compra.':'No disponible'}</div></div>
+        </div>
+        <div class="large card"><div class="card-head"><h2>Últimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavía no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderMovimientos(){
+      return sectionTemplate('movimientos',`
+        <div class="medium card"><div class="card-head"><h2>Cargar movimiento</h2><span class="pill">Alta manual</span></div><form id="movForm" class="grid">
+          <div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
+          <div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div>
+          <div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div>
+          <div class="medium"><label for="movCategoria">Categoría</label><select id="movCategoria"></select></div>
+          <div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
+          <div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div>
+          <div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div>
+          <div class="medium mov-cuotas"><label for="movCuotaActual">N° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
+          <div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div>
+          <div class="large"><button type="submit">Guardar movimiento</button></div>
+        </form></div>
+        <div class="medium card"><div class="card-head"><h2>Categorías personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categoría" /><button type="submit">Agregar categoría</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${data.movimientos.length} movimientos</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th></th></tr></thead><tbody>${[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'contado')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos aún.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderPresupuestos(){
+      const rows=presupuestoRows();
+      return sectionTemplate('presupuestos',`
+        <div class="large card"><div class="card-head"><h2>Presupuesto mensual por categoría</h2><span class="pill">Impacto de cuotas incluido</span></div><form id="budgetForm" class="grid">${rows.map((row)=>`<div class="medium"><label for="budget_${escapeHTML(row.cat)}">${escapeHTML(row.cat)}</label><input id="budget_${escapeHTML(row.cat)}" data-budget="${escapeHTML(row.cat)}" type="number" min="0" step="0.01" value="${row.presupuesto||''}" placeholder="Asignar monto" /></div>`).join('')}<div class="large"><button type="submit">Guardar presupuestos</button></div></form></div>
+        <div class="large card"><div class="card-head"><h2>Seguimiento</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${rows.map((row)=>`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(row.cat)}</strong><div class="hint">Gastado ${fmtMoney(row.gastado)}${row.cuotas?` · Cuotas dentro del mes ${fmtMoney(row.cuotas)}`:''}</div><div class="progress" style="margin-top:10px"><span style="width:${row.pct}%"></span></div></div><div style="min-width:150px"><strong>${row.presupuesto?`${row.pct}%`:'Sin presupuesto'}</strong><span class="muted">${fmtMoney(row.presupuesto)}</span></div></div>`).join('')}</div></div>
+      `);
+    }
+    function renderMetodo(){
+      const metodo=deriveMetodoMensual();
+      return sectionTemplate('metodo',`
+        <div class="medium card">
+          <div class="card-head"><h2>Método mensual</h2><span class="pill">${escapeHTML(metodo.nombre)}</span></div>
+          <form id="metodoForm" class="grid">
+            <div class="large"><label for="metodoNombre">Nombre del método</label><input id="metodoNombre" value="${escapeHTML(data.metodo.nombre||'')}" placeholder="ej. 50 / 30 / 20" /></div>
+            ${data.metodo.items.map((item)=>`
+              <div class="medium">
+                <label for="metodo_nombre_${item.id}">Bloque</label>
+                <input id="metodo_nombre_${item.id}" data-metodo-nombre="${item.id}" value="${escapeHTML(item.nombre)}" />
+              </div>
+              <div class="medium">
+                <label for="metodo_pct_${item.id}">Porcentaje</label>
+                <input id="metodo_pct_${item.id}" data-metodo-pct="${item.id}" type="number" min="0" max="100" step="0.01" value="${parseNum(item.porcentaje)}" />
+              </div>
+            `).join('')}
+            <div class="large"><button type="submit">Guardar método</button></div>
+          </form>
+        </div>
+        <div class="medium card">
+          <div class="card-head"><h2>Base del cálculo</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="list">
+            <div class="list-item"><div><strong>Ingreso del mes</strong><span>Suma de ingresos cargados</span></div><div><strong>${fmtMoney(metodo.ingresosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal debería dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
+            <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribución suma 100% y queda balanceada.':'La distribución no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Distribución aplicada al sueldo</h2><span class="pill">Se recalcula sola</span></div>
+          <div class="list">
+            ${metodo.items.map((item)=>`
+              <div class="list-item">
+                <div style="flex:1">
+                  <strong>${escapeHTML(item.nombre)}</strong>
+                  <div class="hint">${item.porcentaje}% del ingreso del mes</div>
+                  <div class="progress" style="margin-top:10px"><span style="width:${Math.max(0,Math.min(100,item.porcentaje))}%;background:${escapeHTML(item.color)}"></span></div>
+                </div>
+                <div style="min-width:180px">
+                  <strong>${fmtMoney(item.montoObjetivo)}</strong>
+                  <span class="muted">Objetivo</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Referencia rápida</h2><span class="pill">Comparación actual</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Bloque</th><th>Objetivo</th><th>Referencia actual</th><th>Diferencia</th></tr></thead>
+              <tbody>
+                ${metodo.items.map((item)=>{
+                  const ref=item.id==='fijos'?metodo.usados.fijos:item.id==='ahorro'?metodo.usados.ahorro:item.id==='inversion'?metodo.usados.inversion:0;
+                  const diff=ref-item.montoObjetivo;
+                  return `<tr><td>${escapeHTML(item.nombre)}</td><td>${fmtMoney(item.montoObjetivo)}</td><td>${fmtMoney(ref)}</td><td>${diff===0?'En línea':diff>0?`+${fmtMoney(diff)}`:`-${fmtMoney(Math.abs(diff))}`}</td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, fondo acumulado para ahorro e inversiones cargadas del mes para inversiones.</div>
+        </div>
+      `);
+    }
+    function renderInversiones(){
+      return sectionTemplate('inversiones',`
+        <div class="medium card"><div class="card-head"><h2>Registrar inversión</h2><span class="pill">FCI / USD / CEDEAR / PF</span></div><form id="invForm" class="grid">
+          <div class="medium"><label for="invTipo">Tipo</label><select id="invTipo"><option>FCI</option><option>Compra de dólares</option><option>CEDEAR</option><option>Plazo fijo</option><option>Otro</option></select></div>
+          <div class="medium"><label for="invActivo">Activo</label><input id="invActivo" placeholder="ej. SPY / Dólar blue" required /></div>
+          <div class="medium"><label for="invMonto">Monto</label><input id="invMonto" type="number" min="0" step="0.01" required /></div>
+          <div class="medium"><label for="invCuenta">Cuenta</label><input id="invCuenta" placeholder="ej. Broker" /></div>
+          <div class="medium"><label for="invFecha">Fecha</label><input id="invFecha" type="date" required /></div>
+          <div class="medium"><label for="invRend">Rendimiento estimado %</label><input id="invRend" type="number" step="0.01" /></div>
+          <div class="large"><label for="invNotas">Notas</label><textarea id="invNotas"></textarea></div>
+          <div class="large"><button type="submit">Guardar inversión</button></div>
+        </form></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen rápido</h2><span class="pill">Cartera</span></div><div class="list">${['FCI','Compra de dólares','CEDEAR','Plazo fijo','Otro'].map((tipo)=>`<div class="list-item"><div><strong>${escapeHTML(tipo)}</strong></div><div><strong>${fmtMoney(data.inversiones.filter((i)=>i.tipo===tipo).reduce((acc,i)=>acc+parseNum(i.monto),0))}</strong></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Listado de inversiones</h2><span class="pill">${data.inversiones.length} registradas</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Activo</th><th>Cuenta</th><th>Monto</th><th>Rend. %</th><th>Notas</th><th></th></tr></thead><tbody>${[...data.inversiones].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((i)=>`<tr><td>${fmtDate(i.fecha)}</td><td>${escapeHTML(i.tipo)}</td><td>${escapeHTML(i.activo)}</td><td>${escapeHTML(i.cuenta||'-')}</td><td>${fmtMoney(parseNum(i.monto))}</td><td>${parseNum(i.rendimiento).toFixed(2)}%</td><td>${escapeHTML(i.notas||'-')}</td><td><button type="button" class="btn-danger" data-del-inv="${i.id}">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin inversiones cargadas.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderCuotas(){
+      const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1),grouped={};activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
+      const forecast=cuotaForecast();
+      return sectionTemplate('cuotas',`
+        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen de lo que se viene</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${activeInstallmentsForMonth(currentMonth).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Proyección de cuotas futuras</h2><span class="pill">Próximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' · '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
+      `);
+    }
+    function renderPlanes(){
+      const order={Alta:0,Media:1,Baja:2},plans=[...data.planes].sort((a,b)=>(order[a.prioridad]??99)-(order[b.prioridad]??99)||String(a.mes||'').localeCompare(String(b.mes||'')));
+      return sectionTemplate('planes',`
+        <div class="medium card"><div class="card-head"><h2>Nueva compra planeada</h2><span class="pill">Orden por prioridad</span></div><form id="planForm" class="grid"><div class="medium"><label for="planNombre">Nombre</label><input id="planNombre" required /></div><div class="medium"><label for="planCosto">Costo</label><input id="planCosto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="planPrioridad">Prioridad</label><select id="planPrioridad"><option>Alta</option><option>Media</option><option>Baja</option></select></div><div class="medium"><label for="planMes">Mes objetivo</label><input id="planMes" type="month" /></div><div class="large"><label for="planNotas">Notas</label><textarea id="planNotas"></textarea></div><div class="large"><button type="submit">Guardar compra planeada</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Prioridades</h2><span class="pill">En foco</span></div><div class="list">${['Alta','Media','Baja'].map((prio)=>`<div class="list-item"><div><strong>${prio}</strong></div><div><strong>${fmtMoney(plans.filter((p)=>p.prioridad===prio).reduce((acc,p)=>acc+parseNum(p.costo),0))}</strong></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Listado de compras planeadas</h2><span class="pill">${plans.length} registradas</span></div><div class="table-wrap"><table><thead><tr><th>Prioridad</th><th>Nombre</th><th>Mes</th><th>Costo</th><th>Notas</th><th></th></tr></thead><tbody>${plans.map((p)=>`<tr><td>${escapeHTML(p.prioridad)}</td><td>${escapeHTML(p.nombre)}</td><td>${escapeHTML(p.mes||'-')}</td><td>${fmtMoney(parseNum(p.costo))}</td><td>${escapeHTML(p.notas||'-')}</td><td><button type="button" class="btn-danger" data-del-plan="${p.id}">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="6" class="muted">Sin compras planeadas por ahora.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderFondo(){
+      const metaTotal=parseNum(data.fondo.basicos)*6,progress=metaTotal?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/metaTotal*100)):0;
+      const cuotasPendientes=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>({id:m.id,detalle:m.detalle||m.categoria,pendiente:parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m)}));
+      return sectionTemplate('fondo',`
+        <div class="medium card"><div class="card-head"><h2>Fondo de emergencia</h2><span class="pill">Meta 6 meses</span></div><form id="fondoForm" class="grid"><div class="medium"><label for="fondoBasicos">Gastos básicos mensuales</label><input id="fondoBasicos" type="number" min="0" step="0.01" value="${parseNum(data.fondo.basicos)}" /></div><div class="medium"><label for="fondoAhorrado">Monto ya ahorrado</label><input id="fondoAhorrado" type="number" min="0" step="0.01" value="${parseNum(data.fondo.ahorrado)}" /></div><div class="large"><button type="submit">Guardar fondo</button></div></form><div class="hint" style="margin-top:12px">Meta ideal: ${fmtMoney(metaTotal)}.</div><div class="progress" style="margin-top:10px"><span style="width:${progress}%"></span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas pendientes</h2><span class="pill">Impacto acumulado</span></div><div class="list">${cuotasPendientes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong></div><div><strong>${fmtMoney(item.pendiente)}</strong></div></div>`).join('')||'<div class="status ok">No hay saldos pendientes en cuotas.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Metas de ahorro</h2><span class="pill">${data.metas.length} activas</span></div><form id="metaForm" class="grid"><div class="medium"><label for="metaNombre">Nombre</label><input id="metaNombre" required /></div><div class="medium"><label for="metaObjetivo">Monto objetivo</label><input id="metaObjetivo" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaActual">Monto actual</label><input id="metaActual" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaFecha">Fecha límite</label><input id="metaFecha" type="date" required /></div><div class="large"><button type="submit">Guardar meta</button></div></form><div class="list" style="margin-top:14px">${data.metas.map((meta)=>{const objetivo=parseNum(meta.objetivo),actual=parseNum(meta.actual),pct=objetivo?Math.min(100,Math.round(actual/objetivo*100)):0;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const monthlyNeed=Math.max(0,objetivo-actual)/months;return`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(meta.nombre)}</strong><div class="hint">${fmtMoney(actual)} de ${fmtMoney(objetivo)} · límite ${fmtDate(meta.fechaLimite)}</div><div class="progress" style="margin-top:10px"><span style="width:${pct}%"></span></div><div class="hint" style="margin-top:8px">Necesitás ahorrar ${fmtMoney(monthlyNeed)} por mes para llegar.</div></div><div><button type="button" class="btn-danger" data-del-meta="${meta.id}">Eliminar</button></div></div>`;}).join('')||'<div class="status ok">Todavía no hay metas creadas.</div>'}</div></div>
+      `);
+    }
+    function buildCalendarEvents(year,monthIndex){
+      const events=[];
+      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} · ${m.categoria} · ${fmtMoney(parseNum(m.monto))}`});});
+      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Inversión · ${i.tipo} · ${fmtMoney(parseNum(i.monto))}`});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} · ${m.detalle||m.categoria} · ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
+      return events;
+    }
+    function renderCalendarioSection(){const title=new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});return sectionTemplate('calendario',`<div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="calendar" id="calendarGrid"></div></div>`);}
+    function renderCalendario(){
+      const root=$('#calendarGrid');if(!root)return;
+      const now=new Date(),year=now.getFullYear(),monthIndex=now.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],cells=[];
+      weekDays.forEach((day)=>cells.push(`<div class="cal-head">${day}</div>`));for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
+      for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
+      root.innerHTML=cells.join('');
+    }
+    function renderAll(){
+      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
+      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');
+    }
+    function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
+    function convertBlue(source){
+      const out=$('#blueConvertResult');if(!out)return;
+      if(blueState.status!=='ok'||!blueState.compra||!blueState.venta){out.textContent='No disponible';return;}
+      const ars=parseNum($('#arsInput')?.value),usd=parseNum($('#usdInput')?.value);
+      if(source==='ars'&&ars>0)out.textContent=`${fmtMoney(ars)} equivalen a USD ${(ars/blueState.venta).toFixed(2)} al valor de venta.`;
+      else if(source==='usd'&&usd>0)out.textContent=`USD ${usd.toFixed(2)} equivalen a ${fmtMoney(usd*blueState.compra)} al valor de compra.`;
+      else out.textContent='Ingresá un monto para convertir usando dólar blue venta/compra.';
+    }
+    function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+    function drawChart(){
+      const canvas=$('#spendChart');if(!canvas)return;const ctx=canvas.getContext('2d'),width=canvas.width,height=canvas.height;ctx.clearRect(0,0,width,height);
+      const values=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavía no hay gastos para graficar este mes.',28,48);return;}
+      const max=values[0][1],barWidth=Math.min(88,(width-70)/values.length-18);
+      values.forEach(([label,value],index)=>{const x=40+index*(barWidth+18),barH=Math.max(12,value/max*(height-100)),y=height-42-barH,grad=ctx.createLinearGradient(x,y,x,height-42);grad.addColorStop(0,'#e78db7');grad.addColorStop(1,'#f7d1e3');ctx.fillStyle=grad;roundRect(ctx,x,y,barWidth,barH,16);ctx.fill();ctx.fillStyle='#5f4654';ctx.font='12px Segoe UI';ctx.fillText(label.slice(0,10),x,height-18);ctx.fillText(Math.round(value/1000)+'k',x,y-8);});
+    }
+    function bindSectionEvents(){
+      const movForma=$('#movForma');
+      if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
+      const quickForma=$('#quickForma');
+      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
+      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.movimientos.push({id:uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:parseNum($('#movCuotas').value||1),cuotaActual:parseNum($('#movCuotaActual').value||1),detalle:$('#movDetalle').value.trim()});event.target.reset();persistAndRender();const f=$('#movFecha');if(f)f.value=new Date().toISOString().slice(0,10);});
+      $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
+      document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
+      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
+      $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
+      $('#metodoForm')?.addEventListener('submit',(event)=>{
+        event.preventDefault();
+        data.metodo.nombre=$('#metodoNombre').value.trim()||'Método mensual';
+        data.metodo.items=data.metodo.items.map((item)=>({
+          ...item,
+          nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,
+          porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)
+        }));
+        persistAndRender();
+      });
+      $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas),parseNum(item.cuotaActual||1)+1);persistAndRender();}));
+      $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim()});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
+      $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
+      $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
+      $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
+      $('#arsInput')?.addEventListener('input',()=>convertBlue('ars'));
+      $('#usdInput')?.addEventListener('input',()=>convertBlue('usd'));
+    }
+    function initStaticEvents(){
+      $('#btnTestConnection').addEventListener('click',probarConexion);
+      $('#btnSaveConfig').addEventListener('click',guardarConfig);
+      $('#btnLocalMode').addEventListener('click',modoLocal);
+      $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');$('#quickMonto').focus();});
+      $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
+      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha:new Date().toISOString().slice(0,10),categoria:$('#quickCategoria').value,forma:$('#quickForma').value,cuenta:$('#quickCuenta').value.trim(),cuotas:$('#quickForma').value==='cuotas'?parseNum($('#quickCuotas').value||2):1,cuotaActual:1,detalle:'Carga rápida'});event.target.reset();$('#quickModal').classList.add('hidden');persistAndRender();});
+      $('#quickModal').addEventListener('click',(event)=>{if(event.target===$('#quickModal'))$('#quickModal').classList.add('hidden');});
+    }
+    function init(){
+      data=loadLocal();
+      createTabs();
+      renderAll();
+      initStaticEvents();
+      registerServiceWorker();
+      fetchBlueRate();
+      if(liveConfig&&liveConfig.url&&liveConfig.code){
+        $('#cfgUrl').value=liveConfig.url;$('#cfgCode').value=liveConfig.code;$('#setupOverlay').classList.add('hidden');
+        initRealtimeSync().catch((error)=>{const info=classifyFirebaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
+      }else{$('#setupOverlay').classList.remove('hidden');sync('warn','Configuración pendiente');}
+      const movFecha=$('#movFecha');if(movFecha)movFecha.value=new Date().toISOString().slice(0,10);
+    }
+    function registerServiceWorker(){
+      if(!('serviceWorker' in navigator))return;
+      const protocol=window.location.protocol;
+      if(protocol!=='https:'&&window.location.hostname!=='localhost'&&window.location.hostname!=='127.0.0.1')return;
+      window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});},{once:true});
+    }
+    window.addEventListener('beforeunload',()=>destroyFirebaseApp());
+    init();
+  </script>
+</body>
+</html>
