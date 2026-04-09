@@ -782,29 +782,44 @@ alter publication supabase_realtime add table public.mf_states;</div>
         chartAnimationFrame=requestAnimationFrame(step);
         return;
       }
-      const leftPad=isMobile?20:40;
-      const bottomPad=isMobile?36:42;
-      const topPad=isMobile?28:34;
-      const gap=isMobile?12:18;
+      const leftPad=40;
+      const bottomPad=42;
+      const topPad=34;
+      const gap=18;
       const max=values[0][1];
       const availableWidth=width-leftPad*2-gap*(values.length-1);
-      const barWidth=Math.max(isMobile?34:42,Math.min(isMobile?72:88,availableWidth/values.length));
-      values.forEach(([label,value],index)=>{
-        const x=leftPad+index*(barWidth+gap);
-        const barH=Math.max(12,value/max*(height-(topPad+bottomPad+26)));
-        const y=height-bottomPad-barH;
-        const grad=ctx.createLinearGradient(x,y,x,height-bottomPad);
-        grad.addColorStop(0,'#e78db7');
-        grad.addColorStop(1,'#f7d1e3');
-        ctx.fillStyle=grad;
-        roundRect(ctx,x,y,barWidth,barH,isMobile?14:16);
-        ctx.fill();
-        ctx.fillStyle='#5f4654';
-        ctx.font=(isMobile?'11px':'12px')+' Segoe UI';
-        ctx.textAlign='left';
-        ctx.fillText(label.slice(0,isMobile?8:10),x,height-12);
-        ctx.fillText(chartValueLabel(value),x,Math.max(18,y-8));
-      });
+      const barWidth=Math.max(42,Math.min(88,availableWidth/values.length));
+      let startTime=0;
+      const paint=(progress)=>{
+        ctx.clearRect(0,0,width,height);
+        values.forEach(([label,value],index)=>{
+          const x=leftPad+index*(barWidth+gap);
+          const fullBarH=Math.max(12,value/max*(height-(topPad+bottomPad+26)));
+          const barH=fullBarH*progress;
+          const y=height-bottomPad-barH;
+          const grad=ctx.createLinearGradient(x,y,x,height-bottomPad);
+          grad.addColorStop(0,'#e78db7');
+          grad.addColorStop(1,'#f7d1e3');
+          ctx.fillStyle=grad;
+          roundRect(ctx,x,y,barWidth,barH,16);
+          ctx.fill();
+          ctx.fillStyle='#5f4654';
+          ctx.font='12px Segoe UI';
+          ctx.textAlign='left';
+          ctx.globalAlpha=Math.max(.25,progress);
+          ctx.fillText(label.slice(0,10),x,height-12);
+          ctx.fillText(chartValueLabel(value),x,Math.max(18,y-8));
+          ctx.globalAlpha=1;
+        });
+      };
+      const step=(ts)=>{
+        if(!startTime)startTime=ts;
+        const progress=easeOutCubic(Math.min(1,(ts-startTime)/720));
+        paint(progress);
+        if(progress<1)chartAnimationFrame=requestAnimationFrame(step);
+        else chartAnimationFrame=null;
+      };
+      chartAnimationFrame=requestAnimationFrame(step);
     }
     function bindSectionEvents(){
       const movForma=$('#movForma');
