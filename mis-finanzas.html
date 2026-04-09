@@ -218,7 +218,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
     const SUPABASE_TABLE='mf_states';
     let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig();
-    let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null};
+    let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
     const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
     const fmtDate=(v)=>{if(!v)return'Sin fecha';const d=new Date(v+'T00:00:00');return Number.isNaN(d.getTime())?v:d.toLocaleDateString('es-AR');};
@@ -718,8 +718,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(value<10000)return (value/1000).toFixed(1).replace('.0','')+'k';
       return Math.round(value/1000)+'k';
     }
+    function easeOutCubic(t){return 1-Math.pow(1-t,3);}
     function drawChart(){
       const canvas=$('#spendChart');if(!canvas)return;
+      if(chartAnimationFrame){cancelAnimationFrame(chartAnimationFrame);chartAnimationFrame=null;}
       const rect=canvas.getBoundingClientRect();
       const dpr=Math.max(1,window.devicePixelRatio||1);
       const cssWidth=Math.max(280,Math.round(rect.width||canvas.clientWidth||320));
@@ -734,6 +736,52 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const values=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,8);
       if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavía no hay gastos para graficar este mes.',24,42);return;}
       const isMobile=width<=640;
+      if(isMobile){
+        const max=values[0][1];
+        const leftPad=18,rightPad=18,topPad=20,bottomPad=16;
+        const labelWidth=84,valueWidth=48,gap=12;
+        const availableHeight=height-topPad-bottomPad;
+        const rowGap=10;
+        const rowHeight=Math.max(18,Math.min(30,(availableHeight-rowGap*(values.length-1))/values.length));
+        const barAreaWidth=Math.max(96,width-leftPad-rightPad-labelWidth-valueWidth-gap*2);
+        let startTime=0;
+        const paint=(progress)=>{
+          ctx.clearRect(0,0,width,height);
+          values.forEach(([label,value],index)=>{
+            const y=topPad+index*(rowHeight+rowGap);
+            const trackX=leftPad+labelWidth;
+            const trackY=y+2;
+            const trackH=Math.max(14,rowHeight-4);
+            const barW=Math.max(10,(value/max)*barAreaWidth*progress);
+            ctx.fillStyle='#90707f';
+            ctx.font='12px Segoe UI';
+            ctx.textAlign='left';
+            ctx.textBaseline='middle';
+            ctx.fillText(label.slice(0,11),leftPad,y+rowHeight/2);
+            ctx.fillStyle='rgba(241,216,228,.75)';
+            roundRect(ctx,trackX,trackY,barAreaWidth,trackH,trackH/2);
+            ctx.fill();
+            const grad=ctx.createLinearGradient(trackX,trackY,trackX+barAreaWidth,trackY);
+            grad.addColorStop(0,'#f7d1e3');
+            grad.addColorStop(1,'#e78db7');
+            ctx.fillStyle=grad;
+            roundRect(ctx,trackX,trackY,Math.min(barAreaWidth,barW),trackH,trackH/2);
+            ctx.fill();
+            ctx.fillStyle='#5f4654';
+            ctx.textAlign='right';
+            ctx.fillText(chartValueLabel(value),width-rightPad,y+rowHeight/2);
+          });
+        };
+        const step=(ts)=>{
+          if(!startTime)startTime=ts;
+          const progress=easeOutCubic(Math.min(1,(ts-startTime)/650));
+          paint(progress);
+          if(progress<1)chartAnimationFrame=requestAnimationFrame(step);
+          else chartAnimationFrame=null;
+        };
+        chartAnimationFrame=requestAnimationFrame(step);
+        return;
+      }
       const leftPad=isMobile?20:40;
       const bottomPad=isMobile?36:42;
       const topPad=isMobile?28:34;
