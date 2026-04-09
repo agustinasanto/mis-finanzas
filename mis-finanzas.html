@@ -217,6 +217,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
     const SUPABASE_TABLE='mf_states';
+    DEF.recordatorios=[];
     let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig();
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
@@ -238,6 +239,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.presupuestos=src.presupuestos&&typeof src.presupuestos==='object'?src.presupuestos:{};
       next.inversiones=Array.isArray(src.inversiones)?src.inversiones:[];
       next.planes=Array.isArray(src.planes)?src.planes:[];
+      next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
       next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado)}:{basicos:0,ahorrado:0};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
@@ -261,11 +263,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
     function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
     function sync(type,text){const el=$('#syncState');el.textContent=text;el.dataset.state=type;}
-    function destroySupabaseClient(){
-      if(sbChannel&&sbClient){try{sbClient.removeChannel(sbChannel);}catch(err){}}
-      if(sbPoller){clearInterval(sbPoller)}
-      sbClient=null;sbChannel=null;sbPoller=null;lastRemoteStamp='';activeCode='';
-    }
     function normalizeDbUrl(url){
       const value=String(url||'').trim();
       if(!/^https:\/\/[a-z0-9.-]+\/?$/i.test(value))throw new Error('invalid-url');
@@ -274,74 +271,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!host.includes('supabase.co')&&!host.includes('supabase.in'))throw new Error('invalid-url');
       return finalUrl;
     }
-    function classifySupabaseError(error){
-      const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
-      if(error&&error.code==='invalid-url'||lower.includes('invalid-url'))return{code:'invalid-url',text:'La URL parece inválida. Pegá la URL completa de Realtime Database, por ejemplo `https://tu-proyecto-default-rtdb.firebaseio.com/`.'};
-      if(lower.includes('permission_denied')||lower.includes('permission denied'))return{code:'permission-denied',text:'Firebase respondió pero las reglas están bloqueando la lectura o escritura. En Realtime Database abrí Rules y habilitá temporalmente lectura y escritura para probar.'};
-      if(lower.includes('network')||lower.includes('failed to fetch')||lower.includes('cors')||lower.includes('offline'))return{code:'network',text:'No pudimos llegar a Firebase. Revisá conexión, firewall o si la URL está siendo bloqueada por CORS/red.'};
-      if(lower.includes('404')||lower.includes('not found')||lower.includes('project')||lower.includes('does not exist'))return{code:'project-not-found',text:'No encontramos ese proyecto o la base no está inicializada. Confirmá que la URL sea la de Realtime Database y que la base ya exista en Firebase.'};
-      return{code:'unknown',text:'No se pudo validar la configuración. Revisá la URL, que Realtime Database exista y que las reglas permitan probar lectura y escritura.'};
-    }
-    async function connectFB(url,code){
-      destroyFirebaseApp();
-      const dbURL=normalizeDbUrl(url),safeCode=sanitize(code);
-      if(!safeCode)throw new Error('missing-code');
-      fbApp=firebase.initializeApp({apiKey:'mis-finanzas-local',authDomain:'mis-finanzas.local',databaseURL:dbURL,projectId:'mis-finanzas'});
-      fbDB=firebase.database();fbRef=fbDB.ref(`u/${safeCode}/d`);
-      return{ref:fbRef,dbURL,safeCode};
-    }
-    async function testFirebaseConnection(url,code){
-      let connection;
-      try{connection=await connectFB(url,code);}catch(error){
-        if(String(error.message||error).includes('missing-code'))return{ok:false,code:'missing-code',text:'Elegí un código personal antes de probar la conexión.'};
-        return{ok:false,...classifyFirebaseError(error)};
-      }
-      const ref=connection.ref,probeKey='__probe__',payload={ts:Date.now(),ok:true};
-      try{
-        await ref.child(probeKey).set(payload);
-        const snap=await ref.child(probeKey).once('value');
-        const value=snap.val();
-        await ref.child(probeKey).remove();
-        if(!value||value.ts!==payload.ts)return{ok:false,code:'unexpected-response',text:'Firebase respondió, pero la lectura de prueba no devolvió lo esperado. Revisá reglas y la URL de la base.'};
-        return{ok:true,code:'ok',text:'Conexión exitosa. Pudimos leer y escribir en tu nodo sin problemas.',meta:connection};
-      }catch(error){return{ok:false,...classifyFirebaseError(error)};}
-    }
-    async function guardarConfig(){
-      const url=$('#cfgUrl').value.trim(),code=$('#cfgCode').value.trim();
-      setStatus('warn','Probando conexión y guardando configuración...');
-      const result=await testFirebaseConnection(url,code);
-      if(!result.ok){setStatus('err',result.text);sync('err','Error de configuración');return;}
-      saveConfig({url:normalizeDbUrl(url),code});
-      data=loadLocal();
-      $('#setupOverlay').classList.add('hidden');
-      setStatus('ok','Configuración guardada. La app quedó lista para sincronizar.');
-      initRealtimeSync().catch((error)=>{const info=classifyFirebaseError(error);setStatus('err',info.text);sync('err','No se pudo activar la sincronización');});
-    }
-    async function probarConexion(){
-      setStatus('warn','Probando lectura y escritura en Firebase...');
-      const result=await testFirebaseConnection($('#cfgUrl').value.trim(),$('#cfgCode').value.trim());
-      setStatus(result.ok?'ok':'err',result.text);
-    }
-    function modoLocal(){
-      destroyFirebaseApp();clearConfig();syncMode='local';sync('warn','Modo local activo');
-      setStatus('ok','La app va a funcionar en este dispositivo usando localStorage.');
-      $('#setupOverlay').classList.add('hidden');persistAndRender({localOnly:true});
-    }
-    async function initRealtimeSync(){
-      if(!liveConfig||!liveConfig.url||!liveConfig.code){syncMode='local';sync('warn','Modo local activo');return;}
-      const {ref}=await connectFB(liveConfig.url,liveConfig.code);
-      syncMode='remote';sync('warn','Sincronizando con Firebase...');
-      const snap=await ref.once('value'),remote=snap.val();
-      if(remote){data=mergeWithDefaults(remote);saveLocal();}else{await ref.set(data);}
-      ref.on('value',(nextSnap)=>{if(skipRemote){skipRemote=false;return;}const incoming=nextSnap.val();if(incoming){data=mergeWithDefaults(incoming);saveLocal();renderAll();}},(error)=>sync('err',classifyFirebaseError(error).text));
-      sync('ok','Sincronización activa');renderAll();
-    }
-    function queueRemoteSave(){
-      if(syncMode!=='remote'||!fbRef)return;
-      clearTimeout(saveTimer);
-      saveTimer=setTimeout(async()=>{try{skipRemote=true;await fbRef.set(data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifyFirebaseError(error).text);}},700);
-    }
-    function persistAndRender(opts={}){saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
     function createSupabaseClient(url,key){
       return window.supabase.createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
     }
@@ -434,6 +363,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       clearTimeout(saveTimer);
       saveTimer=setTimeout(async()=>{try{skipRemote=true;await writeRemoteRow(sbClient,activeCode,data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifySupabaseError(error).text);}},700);
     }
+    function persistAndRender(opts={}){saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
     function movimientoMontoMes(mov,month){
       const monto=parseNum(mov.monto);
       if(mov.tipo!=='gasto')return monto;
@@ -447,6 +377,54 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total);return Math.max(0,total-actual+1);}
     function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
     function latestMovimientos(limit=8){return[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,limit);}
+    function isFixedCategory(cat){return['Alquiler','Servicios','Transporte','Moto','Facultad','Gimnasio','Salud'].includes(String(cat||''));}
+    function reminderState(reminder){
+      if(reminder?.estado==='hecho')return'hecho';
+      const today=new Date();
+      const target=new Date(String(reminder?.fecha||'')+'T00:00:00');
+      if(Number.isNaN(target.getTime()))return'pendiente';
+      return target<new Date(today.getFullYear(),today.getMonth(),today.getDate())?'vencido':'pendiente';
+    }
+    function reminderRows(limit=99){
+      return[...(data.recordatorios||[])].map((item)=>({...item,estado:reminderState(item),monto:parseNum(item.monto)})).sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).slice(0,limit);
+    }
+    function pendingRemindersForMonth(month){
+      return reminderRows().filter((item)=>item.estado!=='hecho'&&monthKey(item.fecha)===month);
+    }
+    function reminderMonthTotal(month){
+      return pendingRemindersForMonth(month).reduce((acc,item)=>acc+parseNum(item.monto),0);
+    }
+    function populateMovimientoForm(mov){
+      $('#movEditId').value=mov?.id||'';
+      $('#movTipo').value=mov?.tipo||'gasto';
+      $('#movMonto').value=parseNum(mov?.monto)||'';
+      $('#movFecha').value=mov?.fecha||new Date().toISOString().slice(0,10);
+      $('#movCategoria').value=mov?.categoria||data.categorias[0]||'Otros';
+      $('#movForma').value=mov?.forma||'contado';
+      $('#movCuenta').value=mov?.cuenta||'';
+      $('#movCuotas').value=parseNum(mov?.cuotas)||1;
+      $('#movCuotaActual').value=parseNum(mov?.cuotaActual)||1;
+      $('#movDetalle').value=mov?.detalle||'';
+      const save=$('#movSubmitBtn'),cancel=$('#movCancelBtn');
+      if(save)save.textContent=mov?.id?'Guardar cambios':'Guardar movimiento';
+      if(cancel)cancel.style.display=mov?.id?'':'none';
+      document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=$('#movForma').value==='cuotas'?'':'none');
+    }
+    function resetMovimientoForm(){
+      $('#movForm')?.reset();
+      populateMovimientoForm({fecha:new Date().toISOString().slice(0,10),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,categoria:data.categorias[0]||'Otros'});
+    }
+    function readMovimientoForm(){
+      return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),detalle:$('#movDetalle').value.trim()};
+    }
+    function startMovimientoEdit(id){
+      const mov=data.movimientos.find((item)=>item.id===id);
+      if(!mov)return;
+      activeTab='movimientos';
+      renderAll();
+      populateMovimientoForm(mov);
+      $('#movMonto')?.focus();
+    }
     function gastosPorCategoriaMes(month){const out={};data.movimientos.forEach((m)=>{if(m.tipo!=='gasto')return;const value=movimientoMontoMes(m,month);if(!value)return;out[m.categoria]=(out[m.categoria]||0)+value;});return out;}
     function presupuestoRows(){return data.categorias.map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
     function deriveMetrics(){
@@ -459,19 +437,31 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const metrics=deriveMetrics();
       const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
       const planesMes=data.planes.filter((p)=>p.mes===currentMonth).reduce((acc,p)=>acc+parseNum(p.costo),0);
+      const recordatoriosMes=reminderMonthTotal(currentMonth);
+      const gastosFijos=data.movimientos.filter((m)=>m.tipo==='gasto'&&isFixedCategory(m.categoria)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
+      const gastosVariables=Math.max(0,metrics.gastosMes-gastosFijos);
+      const presupuestoFijo=presupuestoRows().filter((row)=>isFixedCategory(row.cat)).reduce((acc,row)=>acc+parseNum(row.presupuesto),0);
+      const presupuestoVariable=presupuestoRows().filter((row)=>!isFixedCategory(row.cat)).reduce((acc,row)=>acc+parseNum(row.presupuesto),0);
       const hoy=new Date(),finMes=new Date(hoy.getFullYear(),hoy.getMonth()+1,0);
+      const diasTranscurridos=Math.max(1,hoy.getDate());
       const diasRestantes=Math.max(1,finMes.getDate()-hoy.getDate()+1);
+      const gastoVariablePace=gastosVariables/diasTranscurridos*finMes.getDate();
+      const gastoFijoProyectado=Math.max(gastosFijos,presupuestoFijo);
+      const gastoVariableProyectado=Math.max(gastosVariables,presupuestoVariable||0,gastoVariablePace||0);
+      const gastoProyectado=gastoFijoProyectado+gastoVariableProyectado;
       const yaComprometido=metrics.gastosMes+inversionesMes;
-      const comprometidoTotal=yaComprometido+planesMes;
+      const comprometidoTotal=gastoProyectado+inversionesMes+planesMes+recordatoriosMes;
       const cierreEstimado=metrics.ingresosMes-comprometidoTotal;
-      const margenHoy=metrics.ingresosMes-yaComprometido;
+      const margenHoy=metrics.ingresosMes-yaComprometido-recordatoriosMes;
       const margenDiario=diasRestantes?cierreEstimado/diasRestantes:0;
       const comprometidoPct=metrics.ingresosMes?Math.round(comprometidoTotal/metrics.ingresosMes*100):0;
+      const libreReal=Math.max(0,metrics.ingresosMes-gastoFijoProyectado-inversionesMes-recordatoriosMes);
       let estado='ok',mensaje='Vas cerrando el mes con margen.';
-      if(metrics.ingresosMes===0) { estado='warn'; mensaje='Todavía no hay ingresos cargados para proyectar el cierre del mes.'; }
-      else if(cierreEstimado<0) { estado='err'; mensaje='Si seguís así y además concretás lo planeado, cerrarías el mes en negativo.'; }
-      else if(comprometidoPct>=85) { estado='warn'; mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.'; }
-      return{...metrics,inversionesMes,planesMes,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,estado,mensaje};
+      if(metrics.ingresosMes===0){estado='warn';mensaje='TodavÃ­a no hay ingresos cargados para proyectar el cierre del mes.';}
+      else if(cierreEstimado<0){estado='err';mensaje='Si seguÃ­s asÃ­ y ademÃ¡s concretÃ¡s lo planeado, cerrarÃ­as el mes en negativo.';}
+      else if(comprometidoPct>=85){estado='warn';mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.';}
+      else if(gastosVariables>0&&gastoVariablePace>gastoVariableProyectado*1.1){estado='warn';mensaje='El gasto variable viene acelerado y te puede comer margen antes de cerrar el mes.';}
+      return{...metrics,inversionesMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
     }
     function deriveMetodoMensual(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
@@ -493,9 +483,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function autoAlerts(){
       const metrics=deriveMetrics(),alerts=[];
-      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenés ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
-      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya superó el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
-      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitás ahorrar ${fmtMoney(need)} por mes.`});});
+      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenÃ©s ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
+      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya superÃ³ el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
+      pendingRemindersForMonth(currentMonth).forEach((item)=>{const today=new Date(),due=new Date(item.fecha+'T00:00:00');const diff=Math.ceil((due-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);if(item.estado==='vencido')alerts.push({type:'err',text:`VenciÃ³ "${item.titulo}" por ${fmtMoney(item.monto)}. MarcÃ¡lo o reprogramalo.`});else if(diff<=3)alerts.push({type:'warn',text:`Se viene "${item.titulo}" en ${Math.max(0,diff)} dÃ­as por ${fmtMoney(item.monto)}.`});});
+      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitÃ¡s ahorrar ${fmtMoney(need)} por mes.`});});
       if(!alerts.length)alerts.push({type:'ok',text:'Sin alertas urgentes. El mes viene bajo control.'});
       return alerts;
     }
@@ -516,58 +507,60 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     const sectionTemplate=(id,inner)=>`<section class="section ${activeTab===id?'active':''}" data-section="${id}"><div class="grid">${inner}</div></section>`;
     function renderInicio(){
-      const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection();
+      const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection(),reminders=reminderRows(6);
       const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
-      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,6);
-      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotización blue.</span></div></div>`;
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizaciÃ³n blue.</span></div></div>`;
       return sectionTemplate('inicio',`
         <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.gastosMes)} gastos</span></div></div>
         <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Incluye impacto de cuotas activas</span></div></div>
         <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
         <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
-        <div class="medium card"><div class="card-head"><h2>Alertas automáticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Últimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automÃ¡ticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Ãšltimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
         <div class="large card">
-          <div class="card-head"><h2>Proyección de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="card-head"><h2>ProyecciÃ³n de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
           <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
           <div class="inline-fields" style="margin-top:12px">
-            <div class="list-item"><div><strong>Ya comprometido</strong><span>Gastos cargados + inversiones del mes</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
-            <div class="list-item"><div><strong>Planeado pendiente</strong><span>Compras objetivo para este mes</span></div><div><strong>${fmtMoney(projection.planesMes)}</strong></div></div>
-            <div class="list-item"><div><strong>Cierre estimado</strong><span>Ingreso menos compromisos y planes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
-            <div class="list-item"><div><strong>Margen diario</strong><span>${projection.diasRestantes} días para cerrar el mes</span></div><div><strong>${fmtMoney(projection.margenDiario)}</strong></div></div>
+            <div class="list-item"><div><strong>Gasto fijo proyectado</strong><span>Presupuesto o gasto real, lo que sea mayor</span></div><div><strong>${fmtMoney(projection.gastoFijoProyectado)}</strong></div></div>
+            <div class="list-item"><div><strong>Gasto variable proyectado</strong><span>Ritmo actual y presupuestos del mes</span></div><div><strong>${fmtMoney(projection.gastoVariableProyectado)}</strong></div></div>
+            <div class="list-item"><div><strong>Extras pendientes</strong><span>Planes y recordatorios todavÃ­a abiertos</span></div><div><strong>${fmtMoney(projection.planesMes+projection.recordatoriosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Cierre estimado</strong><span>${projection.diasRestantes} dÃ­as para cerrar el mes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
           </div>
           <div class="list" style="margin-top:12px">
-            <div class="list-item"><div><strong>Ingresos cargados</strong><span>${fmtMoney(projection.ingresosMes)}</span></div><div><strong>${projection.comprometidoPct}%</strong><span class="muted">del ingreso comprometido</span></div></div>
-            <div class="list-item"><div><strong>Inversiones del mes</strong><span>${fmtMoney(projection.inversionesMes)}</span></div><div><strong>Margen hoy</strong><span class="muted">${fmtMoney(projection.margenHoy)}</span></div></div>
+            <div class="list-item"><div><strong>Ingreso cargado</strong><span>${fmtMoney(projection.ingresosMes)}</span></div><div><strong>${projection.comprometidoPct}%</strong><span class="muted">del ingreso comprometido</span></div></div>
+            <div class="list-item"><div><strong>Libre real para decidir</strong><span>DespuÃ©s de fijos, inversiÃ³n y vencimientos</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong><span class="muted">Margen diario ${fmtMoney(projection.margenDiario)}</span></div></div>
           </div>
         </div>
-        <div class="large card"><div class="card-head"><h2>Gastos por categoría</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
-        <div class="medium card"><div class="card-head"><h2>Próximos compromisos</h2><span class="pill">Cuotas y planes</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categorÃ­a</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
+        <div class="medium card"><div class="card-head"><h2>PrÃ³ximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Â· cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` Â· ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenÃ©s vencimientos cargados por ahora.</div>'}</div></div>
         <div class="medium card">
           <div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div>
           <div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div>
           <div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div>
-          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresá un monto para convertir usando dólar blue venta/compra.':'No disponible'}</div></div>
+          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'IngresÃ¡ un monto para convertir usando dÃ³lar blue venta/compra.':'No disponible'}</div></div>
         </div>
-        <div class="large card"><div class="card-head"><h2>Últimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavía no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+        <div class="large card"><div class="card-head"><h2>Ãšltimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃ­a</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">TodavÃ­a no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
       `);
     }
     function renderMovimientos(){
       return sectionTemplate('movimientos',`
         <div class="medium card"><div class="card-head"><h2>Cargar movimiento</h2><span class="pill">Alta manual</span></div><form id="movForm" class="grid">
+          <input id="movEditId" type="hidden" />
           <div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
           <div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div>
           <div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div>
-          <div class="medium"><label for="movCategoria">Categoría</label><select id="movCategoria"></select></div>
+          <div class="medium"><label for="movCategoria">CategorÃ­a</label><select id="movCategoria"></select></div>
           <div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
           <div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div>
           <div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div>
-          <div class="medium mov-cuotas"><label for="movCuotaActual">N° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
+          <div class="medium mov-cuotas"><label for="movCuotaActual">NÂ° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
           <div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div>
-          <div class="large"><button type="submit">Guardar movimiento</button></div>
+          <div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar ediciÃ³n</button></div>
         </form></div>
-        <div class="medium card"><div class="card-head"><h2>Categorías personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categoría" /><button type="submit">Agregar categoría</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
-        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${data.movimientos.length} movimientos</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th></th></tr></thead><tbody>${[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'contado')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos aún.</td></tr>'}</tbody></table></div></div>
+        <div class="medium card"><div class="card-head"><h2>CategorÃ­as personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categorÃ­a" /><button type="submit">Agregar categorÃ­a</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${data.movimientos.length} movimientos</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃ­a</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos aÃºn.</td></tr>'}</tbody></table></div></div>
       `);
     }
     function renderPresupuestos(){
@@ -686,12 +679,27 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function buildCalendarEvents(year,monthIndex){
       const events=[];
-      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} · ${m.categoria} · ${fmtMoney(parseNum(m.monto))}`});});
-      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Inversión · ${i.tipo} · ${fmtMoney(parseNum(i.monto))}`});});
-      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} · ${m.detalle||m.categoria} · ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
+      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} Â· ${m.categoria} Â· ${fmtMoney(parseNum(m.monto))}`});});
+      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`InversiÃ³n Â· ${i.tipo} Â· ${fmtMoney(parseNum(i.monto))}`});});
+      reminderRows().forEach((r)=>{const day=new Date(r.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio Â· ${r.titulo} Â· ${fmtMoney(parseNum(r.monto))}`});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} Â· ${m.detalle||m.categoria} Â· ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
       return events;
     }
-    function renderCalendarioSection(){const title=new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});return sectionTemplate('calendario',`<div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="calendar" id="calendarGrid"></div></div>`);}
+    function renderCalendarioSection(){
+      const title=new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'}),rows=reminderRows();
+      return sectionTemplate('calendario',`
+        <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid">
+          <div class="medium"><label for="remTitulo">TÃ­tulo</label><input id="remTitulo" required placeholder="ej. Tarjeta Visa" /></div>
+          <div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div>
+          <div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div>
+          <div class="medium"><label for="remCategoria">CategorÃ­a</label><select id="remCategoria"></select></div>
+          <div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div>
+          <div class="large"><button type="submit">Guardar recordatorio</button></div>
+        </form></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.notas?` Â· ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span><div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">TodavÃ­a no hay recordatorios cargados.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="calendar" id="calendarGrid"></div></div>
+      `);
+    }
     function renderCalendario(){
       const root=$('#calendarGrid');if(!root)return;
       const now=new Date(),year=now.getFullYear(),monthIndex=now.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],cells=[];
@@ -703,7 +711,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
       populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');
     }
-    function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
+    function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria','#remCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
     function convertBlue(source){
       const out=$('#blueConvertResult');if(!out)return;
       if(blueState.status!=='ok'||!blueState.compra||!blueState.venta){out.textContent='No disponible';return;}
@@ -826,26 +834,22 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
       const quickForma=$('#quickForma');
       if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
-      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.movimientos.push({id:uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:parseNum($('#movCuotas').value||1),cuotaActual:parseNum($('#movCuotaActual').value||1),detalle:$('#movDetalle').value.trim()});event.target.reset();persistAndRender();const f=$('#movFecha');if(f)f.value=new Date().toISOString().slice(0,10);});
+      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();const payload=readMovimientoForm();const index=data.movimientos.findIndex((m)=>m.id===payload.id);if(index>=0)data.movimientos[index]=payload;else data.movimientos.push(payload);resetMovimientoForm();persistAndRender();});
+      $('#movCancelBtn')?.addEventListener('click',()=>resetMovimientoForm());
       $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
       document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
+      document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
       document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
       $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
-      $('#metodoForm')?.addEventListener('submit',(event)=>{
-        event.preventDefault();
-        data.metodo.nombre=$('#metodoNombre').value.trim()||'Método mensual';
-        data.metodo.items=data.metodo.items.map((item)=>({
-          ...item,
-          nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,
-          porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)
-        }));
-        persistAndRender();
-      });
+      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'MÃ©todo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
       document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas),parseNum(item.cuotaActual||1)+1);persistAndRender();}));
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
+      $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
+      document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
       $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
       $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
@@ -873,7 +877,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;$('#setupOverlay').classList.add('hidden');
         initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
       }else{$('#setupOverlay').classList.remove('hidden');sync('warn','Configuración pendiente');}
-      const movFecha=$('#movFecha');if(movFecha)movFecha.value=new Date().toISOString().slice(0,10);
+      resetMovimientoForm();
     }
     function registerServiceWorker(){
       if(!('serviceWorker' in navigator))return;
@@ -886,3 +890,4 @@ alter publication supabase_realtime add table public.mf_states;</div>
   </script>
 </body>
 </html>
+
