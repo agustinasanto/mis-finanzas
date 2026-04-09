@@ -94,7 +94,7 @@
     .modal{position:fixed;inset:0;z-index:35;display:flex;align-items:flex-end;justify-content:center;background:rgba(255,245,250,.48);backdrop-filter:blur(6px);padding:18px}
     .modal.hidden{display:none}
     .modal-card{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:28px;padding:18px;box-shadow:0 20px 50px rgba(95,70,84,.12)}
-    canvas{width:100%;height:280px;background:var(--panel-soft);border:1px solid var(--line);border-radius:22px}
+    canvas{width:100%;height:280px;display:block;background:var(--panel-soft);border:1px solid var(--line);border-radius:22px}
     @media (max-width:900px){
       .small,.medium,.large{grid-column:span 12}
       .topbar{padding:12px}
@@ -114,6 +114,7 @@
       .setup-actions button{width:100%}
       .list-item{padding:11px 12px}
       table{font-size:.9rem}
+      canvas{height:220px}
     }
   </style>
 </head>
@@ -718,11 +719,44 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return Math.round(value/1000)+'k';
     }
     function drawChart(){
-      const canvas=$('#spendChart');if(!canvas)return;const ctx=canvas.getContext('2d'),width=canvas.width,height=canvas.height;ctx.clearRect(0,0,width,height);
+      const canvas=$('#spendChart');if(!canvas)return;
+      const rect=canvas.getBoundingClientRect();
+      const dpr=Math.max(1,window.devicePixelRatio||1);
+      const cssWidth=Math.max(280,Math.round(rect.width||canvas.clientWidth||320));
+      const cssHeight=window.innerWidth<=640?220:280;
+      canvas.width=Math.round(cssWidth*dpr);
+      canvas.height=Math.round(cssHeight*dpr);
+      const ctx=canvas.getContext('2d');
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(dpr,dpr);
+      const width=cssWidth,height=cssHeight;
+      ctx.clearRect(0,0,width,height);
       const values=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,8);
-      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavía no hay gastos para graficar este mes.',28,48);return;}
-      const max=values[0][1],barWidth=Math.min(88,(width-70)/values.length-18);
-      values.forEach(([label,value],index)=>{const x=40+index*(barWidth+18),barH=Math.max(12,value/max*(height-100)),y=height-42-barH,grad=ctx.createLinearGradient(x,y,x,height-42);grad.addColorStop(0,'#e78db7');grad.addColorStop(1,'#f7d1e3');ctx.fillStyle=grad;roundRect(ctx,x,y,barWidth,barH,16);ctx.fill();ctx.fillStyle='#5f4654';ctx.font='12px Segoe UI';ctx.fillText(label.slice(0,10),x,height-18);ctx.fillText(chartValueLabel(value),x,y-8);});
+      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavía no hay gastos para graficar este mes.',24,42);return;}
+      const isMobile=width<=640;
+      const leftPad=isMobile?20:40;
+      const bottomPad=isMobile?36:42;
+      const topPad=isMobile?28:34;
+      const gap=isMobile?12:18;
+      const max=values[0][1];
+      const availableWidth=width-leftPad*2-gap*(values.length-1);
+      const barWidth=Math.max(isMobile?34:42,Math.min(isMobile?72:88,availableWidth/values.length));
+      values.forEach(([label,value],index)=>{
+        const x=leftPad+index*(barWidth+gap);
+        const barH=Math.max(12,value/max*(height-(topPad+bottomPad+26)));
+        const y=height-bottomPad-barH;
+        const grad=ctx.createLinearGradient(x,y,x,height-bottomPad);
+        grad.addColorStop(0,'#e78db7');
+        grad.addColorStop(1,'#f7d1e3');
+        ctx.fillStyle=grad;
+        roundRect(ctx,x,y,barWidth,barH,isMobile?14:16);
+        ctx.fill();
+        ctx.fillStyle='#5f4654';
+        ctx.font=(isMobile?'11px':'12px')+' Segoe UI';
+        ctx.textAlign='left';
+        ctx.fillText(label.slice(0,isMobile?8:10),x,height-12);
+        ctx.fillText(chartValueLabel(value),x,Math.max(18,y-8));
+      });
     }
     function bindSectionEvents(){
       const movForma=$('#movForma');
