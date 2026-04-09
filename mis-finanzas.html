@@ -247,7 +247,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
-    function loadConfig(){try{return JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');}catch(err){return null;}}
+    function loadConfig(){
+      const embedded={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
+      try{
+        const stored=JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');
+        return stored&&stored.url&&stored.key&&stored.code?stored:embedded;
+      }catch(err){
+        return embedded;
+      }
+    }
     function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
     function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
