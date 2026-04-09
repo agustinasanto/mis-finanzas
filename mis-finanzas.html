@@ -186,11 +186,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       </div>
       <form id="quickForm" class="grid">
         <div class="medium"><label for="quickMonto">Monto</label><input id="quickMonto" type="number" min="0" step="0.01" required /></div>
+        <div class="medium"><label for="quickFecha">Fecha</label><input id="quickFecha" type="date" required /></div>
         <div class="medium"><label for="quickTipo">Tipo</label><select id="quickTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
         <div class="medium"><label for="quickCategoria">Categoría</label><select id="quickCategoria"></select></div>
         <div class="medium"><label for="quickForma">Forma</label><select id="quickForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
         <div class="medium" id="quickCuentaWrap"><label for="quickCuenta">Tarjeta / cuenta</label><input id="quickCuenta" placeholder="ej. Visa" /></div>
         <div class="medium" id="quickCuotasWrap"><label for="quickCuotas">Cantidad de cuotas</label><input id="quickCuotas" type="number" min="2" value="3" /></div>
+        <div class="medium" id="quickInicioCobroWrap"><label for="quickInicioCobro">Primer mes de cobro</label><input id="quickInicioCobro" type="month" /></div>
         <div class="large"><button type="submit">Guardar y cerrar</button></div>
       </form>
     </div>
@@ -218,9 +220,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
+    DEF.fondo.aportes=[];
     let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig();
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
+    const MOJIBAKE_FIXES=[['ÃƒÂ¡','á'],['ÃƒÂ©','é'],['ÃƒÂ­','í'],['ÃƒÂ³','ó'],['ÃƒÂº','ú'],['ÃƒÂ±','ñ'],['ÃƒÂ','Á'],['ÃƒÂ‰','É'],['ÃƒÂ','Í'],['ÃƒÂ“','Ó'],['ÃƒÂš','Ú'],['ÃƒÂ‘','Ñ'],['Ã‚Â°','°'],['Ã‚Â·','·'],['Ã‚Âº','º'],['Ã‚Â»','»'],['Ã‚Â«','«'],['Ã¡','á'],['Ã©','é'],['Ã­','í'],['Ã³','ó'],['Ãº','ú'],['Ã±','ñ'],['Ã','Á'],['Ã‰','É'],['Ã','Í'],['Ã“','Ó'],['Ãš','Ú'],['Ã‘','Ñ'],['Â·','·'],['Â°','°'],['Âº','º'],['Â»','»'],['Â«','«'],['â†’','→'],['âœ¿','✿'],['â€','❀'],['â','❁'],['â€¦','…']];
     const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
     const fmtDate=(v)=>{if(!v)return'Sin fecha';const d=new Date(v+'T00:00:00');return Number.isNaN(d.getTime())?v:d.toLocaleDateString('es-AR');};
     const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
@@ -231,6 +235,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const addMonths=(base,offset)=>{const [y,m]=base.split('-').map(Number);return new Date(y,m-1+offset,1).toISOString().slice(0,7);};
     const monthLabel=(key)=>{const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});};
     const escapeHTML=(str)=>String(str??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    function repairMojibakeString(value){let next=String(value??'');MOJIBAKE_FIXES.forEach(([from,to])=>{next=next.split(from).join(to);});return next;}
+    function repairMojibake(root=document.body){
+      if(!root)return;
+      const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+      let node;
+      while((node=walker.nextNode())){node.nodeValue=repairMojibakeString(node.nodeValue);}
+      root.querySelectorAll('[placeholder],[title],[aria-label]').forEach((el)=>{['placeholder','title','aria-label'].forEach((attr)=>{if(el.hasAttribute(attr))el.setAttribute(attr,repairMojibakeString(el.getAttribute(attr)));});});
+      document.title=repairMojibakeString(document.title);
+    }
     function clone(v){return JSON.parse(JSON.stringify(v));}
     function mergeWithDefaults(raw){
       const src=raw&&typeof raw==='object'?raw:{},next=clone(DEF);
@@ -240,7 +253,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.inversiones=Array.isArray(src.inversiones)?src.inversiones:[];
       next.planes=Array.isArray(src.planes)?src.planes:[];
       next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
-      next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado)}:{basicos:0,ahorrado:0};
+      next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
         nombre:src.metodo.nombre||DEF.metodo.nombre,
@@ -370,9 +383,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>1){const cuota=monto/parseNum(mov.cuotas);return cuotaMonthKeys(mov).includes(month)?cuota:0;}
       return monthKey(mov.fecha)===month?monto:0;
     }
-    function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[monthKey(mov.fecha)];const base=monthKey(mov.fecha);return Array.from({length:total},(_,i)=>addMonths(base,i));}
+    function installmentStartMonth(mov){return mov?.inicioCobro||monthKey(mov?.fecha);}
+    function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[installmentStartMonth(mov)];const base=installmentStartMonth(mov);return Array.from({length:total},(_,i)=>addMonths(base,i));}
     function activeInstallmentsForMonth(month){
-      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month);return idx===-1?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha};}).filter(Boolean);
+      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month);return idx===-1?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha,inicioCobro:installmentStartMonth(m)};}).filter(Boolean);
     }
     function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total);return Math.max(0,total-actual+1);}
     function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
@@ -404,6 +418,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#movCuenta').value=mov?.cuenta||'';
       $('#movCuotas').value=parseNum(mov?.cuotas)||1;
       $('#movCuotaActual').value=parseNum(mov?.cuotaActual)||1;
+      $('#movInicioCobro').value=mov?.inicioCobro||monthKey(mov?.fecha);
       $('#movDetalle').value=mov?.detalle||'';
       const save=$('#movSubmitBtn'),cancel=$('#movCancelBtn');
       if(save)save.textContent=mov?.id?'Guardar cambios':'Guardar movimiento';
@@ -412,10 +427,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function resetMovimientoForm(){
       $('#movForm')?.reset();
-      populateMovimientoForm({fecha:new Date().toISOString().slice(0,10),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,categoria:data.categorias[0]||'Otros'});
+      populateMovimientoForm({fecha:new Date().toISOString().slice(0,10),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,inicioCobro:currentMonth,categoria:data.categorias[0]||'Otros'});
     }
     function readMovimientoForm(){
-      return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),detalle:$('#movDetalle').value.trim()};
+      return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),inicioCobro:$('#movInicioCobro').value||monthKey($('#movFecha').value),detalle:$('#movDetalle').value.trim()};
     }
     function startMovimientoEdit(id){
       const mov=data.movimientos.find((item)=>item.id===id);
@@ -430,12 +445,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function deriveMetrics(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
       const gastosMes=data.movimientos.filter((m)=>m.tipo==='gasto'&&monthKey(m.fecha)<=addMonths(currentMonth,12)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
-      const cuotasMes=activeInstallmentsForMonth(currentMonth).reduce((acc,item)=>acc+item.montoCuota,0),saldo=ingresosMes-gastosMes,fondoMeta=parseNum(data.fondo.basicos)*6,fondoPct=fondoMeta?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/fondoMeta*100)):0;
-      return{ingresosMes,gastosMes,cuotasMes,saldo,fondoMeta,fondoPct};
+      const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
+      const aportesFondoMes=(data.fondo.aportes||[]).filter((a)=>monthKey(a.fecha)===currentMonth).reduce((acc,a)=>acc+parseNum(a.monto),0);
+      const cuotasMes=activeInstallmentsForMonth(currentMonth).reduce((acc,item)=>acc+item.montoCuota,0),egresosMes=gastosMes+inversionesMes+aportesFondoMes,saldo=ingresosMes-egresosMes,fondoMeta=parseNum(data.fondo.basicos)*6,fondoPct=fondoMeta?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/fondoMeta*100)):0;
+      return{ingresosMes,gastosMes,inversionesMes,aportesFondoMes,egresosMes,cuotasMes,saldo,fondoMeta,fondoPct};
     }
     function deriveMonthProjection(){
       const metrics=deriveMetrics();
-      const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
+      const inversionesMes=metrics.inversionesMes;
+      const aportesFondoMes=metrics.aportesFondoMes;
       const planesMes=data.planes.filter((p)=>p.mes===currentMonth).reduce((acc,p)=>acc+parseNum(p.costo),0);
       const recordatoriosMes=reminderMonthTotal(currentMonth);
       const gastosFijos=data.movimientos.filter((m)=>m.tipo==='gasto'&&isFixedCategory(m.categoria)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
@@ -449,19 +467,19 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const gastoFijoProyectado=Math.max(gastosFijos,presupuestoFijo);
       const gastoVariableProyectado=Math.max(gastosVariables,presupuestoVariable||0,gastoVariablePace||0);
       const gastoProyectado=gastoFijoProyectado+gastoVariableProyectado;
-      const yaComprometido=metrics.gastosMes+inversionesMes;
-      const comprometidoTotal=gastoProyectado+inversionesMes+planesMes+recordatoriosMes;
+      const yaComprometido=metrics.gastosMes+inversionesMes+aportesFondoMes;
+      const comprometidoTotal=gastoProyectado+inversionesMes+aportesFondoMes+planesMes+recordatoriosMes;
       const cierreEstimado=metrics.ingresosMes-comprometidoTotal;
       const margenHoy=metrics.ingresosMes-yaComprometido-recordatoriosMes;
       const margenDiario=diasRestantes?cierreEstimado/diasRestantes:0;
       const comprometidoPct=metrics.ingresosMes?Math.round(comprometidoTotal/metrics.ingresosMes*100):0;
-      const libreReal=Math.max(0,metrics.ingresosMes-gastoFijoProyectado-inversionesMes-recordatoriosMes);
+      const libreReal=Math.max(0,metrics.ingresosMes-gastoFijoProyectado-inversionesMes-aportesFondoMes-recordatoriosMes);
       let estado='ok',mensaje='Vas cerrando el mes con margen.';
       if(metrics.ingresosMes===0){estado='warn';mensaje='TodavÃ­a no hay ingresos cargados para proyectar el cierre del mes.';}
       else if(cierreEstimado<0){estado='err';mensaje='Si seguÃ­s asÃ­ y ademÃ¡s concretÃ¡s lo planeado, cerrarÃ­as el mes en negativo.';}
       else if(comprometidoPct>=85){estado='warn';mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.';}
       else if(gastosVariables>0&&gastoVariablePace>gastoVariableProyectado*1.1){estado='warn';mensaje='El gasto variable viene acelerado y te puede comer margen antes de cerrar el mes.';}
-      return{...metrics,inversionesMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
+      return{...metrics,inversionesMes,aportesFondoMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
     }
     function deriveMetodoMensual(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
@@ -512,8 +530,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
       const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizaciÃ³n blue.</span></div></div>`;
       return sectionTemplate('inicio',`
-        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.gastosMes)} gastos</span></div></div>
-        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Incluye impacto de cuotas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.egresosMes)} salidas totales</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Más ${fmtMoney(metrics.inversionesMes+metrics.aportesFondoMes)} entre inversión y fondo</span></div></div>
         <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
         <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
         <div class="medium card"><div class="card-head"><h2>Alertas automÃ¡ticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
@@ -556,6 +574,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           <div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div>
           <div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div>
           <div class="medium mov-cuotas"><label for="movCuotaActual">NÂ° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
+          <div class="medium mov-cuotas"><label for="movInicioCobro">Primer mes de cobro</label><input id="movInicioCobro" type="month" /></div>
           <div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div>
           <div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar ediciÃ³n</button></div>
         </form></div>
@@ -654,8 +673,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1),grouped={};activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
       const forecast=cuotaForecast();
       return sectionTemplate('cuotas',`
-        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Resumen de lo que se viene</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${activeInstallmentsForMonth(currentMonth).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para este mes.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen de lo que se viene</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${activeInstallmentsForMonth(currentMonth).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas} · inicio ${escapeHTML(monthLabel(installmentStartMonth(item)))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para este mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
         <div class="large card"><div class="card-head"><h2>Proyección de cuotas futuras</h2><span class="pill">Próximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' · '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
       `);
@@ -673,6 +692,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const cuotasPendientes=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>({id:m.id,detalle:m.detalle||m.categoria,pendiente:parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m)}));
       return sectionTemplate('fondo',`
         <div class="medium card"><div class="card-head"><h2>Fondo de emergencia</h2><span class="pill">Meta 6 meses</span></div><form id="fondoForm" class="grid"><div class="medium"><label for="fondoBasicos">Gastos básicos mensuales</label><input id="fondoBasicos" type="number" min="0" step="0.01" value="${parseNum(data.fondo.basicos)}" /></div><div class="medium"><label for="fondoAhorrado">Monto ya ahorrado</label><input id="fondoAhorrado" type="number" min="0" step="0.01" value="${parseNum(data.fondo.ahorrado)}" /></div><div class="large"><button type="submit">Guardar fondo</button></div></form><div class="hint" style="margin-top:12px">Meta ideal: ${fmtMoney(metaTotal)}.</div><div class="progress" style="margin-top:10px"><span style="width:${progress}%"></span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Registrar aporte</h2><span class="pill">Cuenta como salida del mes</span></div><form id="fondoAporteForm" class="grid"><div class="medium"><label for="fondoAporteMonto">Monto</label><input id="fondoAporteMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="fondoAporteFecha">Fecha</label><input id="fondoAporteFecha" type="date" required /></div><div class="large"><label for="fondoAporteDetalle">Detalle</label><input id="fondoAporteDetalle" placeholder="ej. Transferencia al fondo" /></div><div class="large"><button type="submit">Registrar aporte</button></div></form><div class="list" style="margin-top:12px">${(data.fondo.aportes||[]).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((aporte)=>`<div class="list-item"><div><strong>${escapeHTML(aporte.detalle||'Aporte al fondo')}</strong><span>${fmtDate(aporte.fecha)}</span></div><div><strong>${fmtMoney(aporte.monto)}</strong><button type="button" class="btn-danger" data-del-fondo-aporte="${aporte.id}" style="margin-top:8px">Eliminar</button></div></div>`).join('')||'<div class="status ok">Todavía no registraste aportes al fondo.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Cuotas pendientes</h2><span class="pill">Impacto acumulado</span></div><div class="list">${cuotasPendientes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong></div><div><strong>${fmtMoney(item.pendiente)}</strong></div></div>`).join('')||'<div class="status ok">No hay saldos pendientes en cuotas.</div>'}</div></div>
         <div class="large card"><div class="card-head"><h2>Metas de ahorro</h2><span class="pill">${data.metas.length} activas</span></div><form id="metaForm" class="grid"><div class="medium"><label for="metaNombre">Nombre</label><input id="metaNombre" required /></div><div class="medium"><label for="metaObjetivo">Monto objetivo</label><input id="metaObjetivo" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaActual">Monto actual</label><input id="metaActual" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaFecha">Fecha límite</label><input id="metaFecha" type="date" required /></div><div class="large"><button type="submit">Guardar meta</button></div></form><div class="list" style="margin-top:14px">${data.metas.map((meta)=>{const objetivo=parseNum(meta.objetivo),actual=parseNum(meta.actual),pct=objetivo?Math.min(100,Math.round(actual/objetivo*100)):0;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const monthlyNeed=Math.max(0,objetivo-actual)/months;return`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(meta.nombre)}</strong><div class="hint">${fmtMoney(actual)} de ${fmtMoney(objetivo)} · límite ${fmtDate(meta.fechaLimite)}</div><div class="progress" style="margin-top:10px"><span style="width:${pct}%"></span></div><div class="hint" style="margin-top:8px">Necesitás ahorrar ${fmtMoney(monthlyNeed)} por mes para llegar.</div></div><div><button type="button" class="btn-danger" data-del-meta="${meta.id}">Eliminar</button></div></div>`;}).join('')||'<div class="status ok">Todavía no hay metas creadas.</div>'}</div></div>
       `);
@@ -709,7 +729,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function renderAll(){
       $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
-      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');
+      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();
     }
     function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria','#remCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
     function convertBlue(source){
@@ -832,8 +852,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function bindSectionEvents(){
       const movForma=$('#movForma');
       if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
+      $('#movFecha')?.addEventListener('change',()=>{if($('#movForma')?.value==='cuotas'&&!$('#movEditId')?.value)$('#movInicioCobro').value=monthKey($('#movFecha').value);});
       const quickForma=$('#quickForma');
-      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
+      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';$('#quickInicioCobroWrap').style.display=on?'':'none';if(on&&!$('#quickInicioCobro').value)$('#quickInicioCobro').value=currentMonth;};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
       $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();const payload=readMovimientoForm();const index=data.movimientos.findIndex((m)=>m.id===payload.id);if(index>=0)data.movimientos[index]=payload;else data.movimientos.push(payload);resetMovimientoForm();persistAndRender();});
       $('#movCancelBtn')?.addEventListener('click',()=>resetMovimientoForm());
       $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
@@ -851,6 +872,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
       document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
       $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);data.fondo.aportes.unshift({id:uid(),monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-parseNum(aporte.monto));data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
       $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
       $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
@@ -861,14 +884,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnTestConnection').addEventListener('click',probarConexion);
       $('#btnSaveConfig').addEventListener('click',guardarConfig);
       $('#btnLocalMode').addEventListener('click',modoLocal);
-      $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');$('#quickMonto').focus();});
+      $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
-      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha:new Date().toISOString().slice(0,10),categoria:$('#quickCategoria').value,forma:$('#quickForma').value,cuenta:$('#quickCuenta').value.trim(),cuotas:$('#quickForma').value==='cuotas'?parseNum($('#quickCuotas').value||2):1,cuotaActual:1,detalle:'Carga rápida'});event.target.reset();$('#quickModal').classList.add('hidden');persistAndRender();});
+      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value;data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?parseNum($('#quickCuotas').value||2):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:'Carga rápida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
       $('#quickModal').addEventListener('click',(event)=>{if(event.target===$('#quickModal'))$('#quickModal').classList.add('hidden');});
     }
     function init(){
       data=loadLocal();
       createTabs();
+      repairMojibake(document.body);
       renderAll();
       initStaticEvents();
       registerServiceWorker();
@@ -878,6 +902,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
         initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
       }else{$('#setupOverlay').classList.remove('hidden');sync('warn','Configuración pendiente');}
       resetMovimientoForm();
+      if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
+      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
     }
     function registerServiceWorker(){
       if(!('serviceWorker' in navigator))return;
