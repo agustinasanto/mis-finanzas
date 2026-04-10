@@ -182,18 +182,22 @@ alter publication supabase_realtime add table public.mf_states;</div>
     <div class="overlay-card">
       <div class="card-head">
         <div>
-          <h2>Entrá a Mis Finanzas ✿</h2>
-          <p class="muted">Tu espacio queda protegido con tu código personal.</p>
+          <h2 id="loginTitle">Entrá a Mis Finanzas ✿</h2>
+          <p class="muted" id="loginSubtitle">Tu espacio queda protegido con tu contraseña.</p>
         </div>
         <span class="pill">Acceso</span>
       </div>
       <div class="card" style="background:var(--panel-soft);margin-bottom:14px">
-        <div class="hint">Usá el mismo código personal con el que sincronizás la app. Si querés, podés recordar este dispositivo para no volver a ingresarlo cada vez.</div>
+        <div class="hint" id="loginHint">Usá tu contraseña para desbloquear la app. Si querés, podés recordar este dispositivo para no volver a ingresarla cada vez.</div>
       </div>
       <form id="loginForm" class="grid">
         <div class="large">
-          <label for="loginCode">Código personal</label>
-          <input id="loginCode" type="password" placeholder="Ingresá tu código" autocomplete="current-password" />
+          <label for="loginPassword">Contraseña</label>
+          <input id="loginPassword" type="password" placeholder="Ingresá tu contraseña" autocomplete="current-password" />
+        </div>
+        <div class="large hidden" id="loginConfirmWrap" style="display:none">
+          <label for="loginPasswordConfirm">Confirmar contraseña</label>
+          <input id="loginPasswordConfirm" type="password" placeholder="Repetí tu contraseña" autocomplete="new-password" />
         </div>
         <div class="large">
           <label style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff">
@@ -201,9 +205,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
             <span>Recordar este dispositivo</span>
           </label>
         </div>
-        <div class="large"><div id="loginStatus" class="status">Ingresá tu código para desbloquear la app.</div></div>
+        <div class="large"><div id="loginStatus" class="status">Ingresá tu contraseña para desbloquear la app.</div></div>
         <div class="large setup-actions">
-          <button type="submit">Entrar ✿</button>
+          <button type="submit" id="loginSubmitBtn">Entrar ✿</button>
           <button type="button" class="btn-soft" id="btnLockLocalOnly">Seguir sin recordar</button>
         </div>
       </form>
@@ -250,7 +254,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
   <script>
     const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',LOGIN_KEY='mf_unlock_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['asistente','Asistente'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
-    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
+    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],auth:{passwordHash:''},metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
     DEF.fondo.aportes=[];
@@ -287,6 +291,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.planes=Array.isArray(src.planes)?src.planes:[];
       next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
       next.chat=Array.isArray(src.chat)?src.chat:[];
+      next.auth=src.auth&&typeof src.auth==='object'?{passwordHash:String(src.auth.passwordHash||'')}:{passwordHash:''};
       next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
@@ -308,9 +313,30 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
-    function expectedLoginCode(){return String(liveConfig?.code||$('#cfgCode')?.value||'').trim();}
-    function isRememberedDevice(){try{return localStorage.getItem(LOGIN_KEY)===sanitize(expectedLoginCode());}catch(err){return false;}}
-    function rememberDevice(remember){try{if(remember&&expectedLoginCode())localStorage.setItem(LOGIN_KEY,sanitize(expectedLoginCode()));else localStorage.removeItem(LOGIN_KEY);}catch(err){}}
+    function hashPassword(value){
+      const text=String(value||'');
+      let hash=5381;
+      for(let i=0;i<text.length;i++)hash=((hash<<5)+hash)+text.charCodeAt(i);
+      return `p_${(hash>>>0).toString(36)}`;
+    }
+    function currentPasswordHash(){return String(data?.auth?.passwordHash||'').trim();}
+    function hasLoginPassword(){return !!currentPasswordHash();}
+    function isRememberedDevice(){try{return !!currentPasswordHash()&&localStorage.getItem(LOGIN_KEY)===currentPasswordHash();}catch(err){return false;}}
+    function rememberDevice(remember){try{if(remember&&currentPasswordHash())localStorage.setItem(LOGIN_KEY,currentPasswordHash());else localStorage.removeItem(LOGIN_KEY);}catch(err){}}
+    function updateLoginMode(){
+      const creating=!hasLoginPassword();
+      $('#loginTitle')&&( $('#loginTitle').textContent=creating?'Creá tu contraseña ✿':'Entrá a Mis Finanzas ✿');
+      $('#loginSubtitle')&&( $('#loginSubtitle').textContent=creating?'Definí una contraseña para bloquear la app en todos tus dispositivos.':'Tu espacio queda protegido con tu contraseña.');
+      $('#loginHint')&&( $('#loginHint').textContent=creating?'Esta contraseña queda separada del código de sincronización. Como la app es estática, sirve para bloquear la vista de la app, no como seguridad de servidor.':'Usá tu contraseña para desbloquear la app. Si querés, podés recordar este dispositivo para no volver a ingresarla cada vez.');
+      $('#loginConfirmWrap')&&($('#loginConfirmWrap').style.display=creating?'':'none');
+      $('#loginSubmitBtn')&&( $('#loginSubmitBtn').textContent=creating?'Crear contraseña ✿':'Entrar ✿');
+      $('#loginPassword')&&( $('#loginPassword').placeholder=creating?'Creá una contraseña':'Ingresá tu contraseña');
+      $('#loginPasswordConfirm')&&( $('#loginPasswordConfirm').value='');
+      if(!$('#loginStatus')?.textContent || $('#loginStatus')?.dataset.mode!==String(creating)){
+        setLoginStatus(creating?'warn':'ok',creating?'Todavía no tenés contraseña. Creala para activar el acceso.':'Ingresá tu contraseña para desbloquear la app.');
+        if($('#loginStatus'))$('#loginStatus').dataset.mode=String(creating);
+      }
+    }
     function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=text;}
     function unlockApp(remember=false){
       isUnlocked=true;
@@ -318,9 +344,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#loginOverlay')?.classList.add('hidden');
       setLoginStatus('ok','Acceso concedido.');
     }
-    function lockApp(message='Ingresá tu código para desbloquear la app.'){
+    function lockApp(message='Ingresá tu contraseña para desbloquear la app.'){
       isUnlocked=false;
-      $('#loginCode')&&($('#loginCode').value='');
+      updateLoginMode();
+      $('#loginPassword')&&($('#loginPassword').value='');
+      $('#loginPasswordConfirm')&&($('#loginPasswordConfirm').value='');
       $('#loginRemember')&&($('#loginRemember').checked=isRememberedDevice());
       setLoginStatus('warn',message);
       if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
@@ -411,7 +439,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
       saveConfig({url:normalizeDbUrl(url),key,code});
       data=loadLocal();
       refreshAccessOverlays();
-      unlockApp(true);
       setStatus('ok','Configuracion guardada. La app quedo lista para sincronizar.');
       initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);setStatus('err',info.text);sync('err','No se pudo activar la sincronizacion');});
     }
@@ -434,9 +461,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncMode='remote';sync('warn','Sincronizando con Supabase...');
       const remote=await readRemoteRow(client,safeCode);
       if(remote&&remote.payload){data=mergeWithDefaults(remote.payload);lastRemoteStamp=remote.updated_at||'';saveLocal();}else{await writeRemoteRow(client,safeCode,data);}
-      sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{if(skipRemote){skipRemote=false;return;}if(payload.new&&payload.new.payload){lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;data=mergeWithDefaults(payload.new.payload);saveLocal();renderAll();sync('ok','Cambios recibidos desde Supabase');}}).subscribe();
-      sbPoller=setInterval(async()=>{try{const row=await readRemoteRow(client,safeCode);if(row&&row.updated_at&&row.updated_at!==lastRemoteStamp&&!skipRemote){lastRemoteStamp=row.updated_at;data=mergeWithDefaults(row.payload||{});saveLocal();renderAll();sync('ok','Cambios actualizados');}}catch(error){}},15000);
-      sync('ok','Sincronizacion activa');renderAll();
+      sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{if(skipRemote){skipRemote=false;return;}if(payload.new&&payload.new.payload){lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;data=mergeWithDefaults(payload.new.payload);saveLocal();renderAll();refreshAccessOverlays();sync('ok','Cambios recibidos desde Supabase');}}).subscribe();
+      sbPoller=setInterval(async()=>{try{const row=await readRemoteRow(client,safeCode);if(row&&row.updated_at&&row.updated_at!==lastRemoteStamp&&!skipRemote){lastRemoteStamp=row.updated_at;data=mergeWithDefaults(row.payload||{});saveLocal();renderAll();refreshAccessOverlays();sync('ok','Cambios actualizados');}}catch(error){}},15000);
+      sync('ok','Sincronizacion activa');renderAll();refreshAccessOverlays();
     }
     function queueRemoteSave(){
       if(syncMode!=='remote'||!sbClient||!activeCode)return;
@@ -997,14 +1024,21 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnTestConnection').addEventListener('click',probarConexion);
       $('#btnSaveConfig').addEventListener('click',guardarConfig);
       $('#btnLocalMode').addEventListener('click',modoLocal);
-      $('#btnRelock')?.addEventListener('click',()=>{rememberDevice(false);lockApp('La app se bloqueó. Volvé a ingresar tu código para seguir.');});
+      $('#btnRelock')?.addEventListener('click',()=>{rememberDevice(false);lockApp('La app se bloqueó. Volvé a ingresar tu contraseña para seguir.');});
       $('#btnLockLocalOnly')?.addEventListener('click',()=>unlockApp(false));
       $('#loginForm')?.addEventListener('submit',(event)=>{
         event.preventDefault();
-        const value=$('#loginCode')?.value.trim();
-        const expected=expectedLoginCode();
-        if(!expected){unlockApp(false);return;}
-        if(value!==expected){setLoginStatus('err','Ese código no coincide con el acceso configurado.');return;}
+        const password=$('#loginPassword')?.value||'';
+        const confirm=$('#loginPasswordConfirm')?.value||'';
+        if(!hasLoginPassword()){
+          if(password.trim().length<4){setLoginStatus('err','Elegí una contraseña de al menos 4 caracteres.');return;}
+          if(password!==confirm){setLoginStatus('err','Las contraseñas no coinciden.');return;}
+          data.auth.passwordHash=hashPassword(password);
+          persistAndRender();
+          unlockApp($('#loginRemember')?.checked);
+          return;
+        }
+        if(hashPassword(password)!==currentPasswordHash()){setLoginStatus('err','La contraseña no coincide con la configurada.');return;}
         unlockApp($('#loginRemember')?.checked);
       });
       $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
