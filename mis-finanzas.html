@@ -216,12 +216,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
 
   <script>
     const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
-    const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
-    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
+    const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['asistente','Asistente'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
+    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
     DEF.fondo.aportes=[];
-    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig();
+    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig(),cuotasViewMonth=currentMonth;
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
     const MOJIBAKE_FIXES=[['ÃƒÂ¡','á'],['ÃƒÂ©','é'],['ÃƒÂ­','í'],['ÃƒÂ³','ó'],['ÃƒÂº','ú'],['ÃƒÂ±','ñ'],['ÃƒÂ','Á'],['ÃƒÂ‰','É'],['ÃƒÂ','Í'],['ÃƒÂ“','Ó'],['ÃƒÂš','Ú'],['ÃƒÂ‘','Ñ'],['Ã‚Â°','°'],['Ã‚Â·','·'],['Ã‚Âº','º'],['Ã‚Â»','»'],['Ã‚Â«','«'],['Ã¡','á'],['Ã©','é'],['Ã­','í'],['Ã³','ó'],['Ãº','ú'],['Ã±','ñ'],['Ã','Á'],['Ã‰','É'],['Ã','Í'],['Ã“','Ó'],['Ãš','Ú'],['Ã‘','Ñ'],['Â·','·'],['Â°','°'],['Âº','º'],['Â»','»'],['Â«','«'],['â†’','→'],['âœ¿','✿'],['â€','❀'],['â','❁'],['â€¦','…']];
@@ -253,6 +253,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.inversiones=Array.isArray(src.inversiones)?src.inversiones:[];
       next.planes=Array.isArray(src.planes)?src.planes:[];
       next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
+      next.chat=Array.isArray(src.chat)?src.chat:[];
       next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
@@ -392,6 +393,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
     function latestMovimientos(limit=8){return[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,limit);}
     function isFixedCategory(cat){return['Alquiler','Servicios','Transporte','Moto','Facultad','Gimnasio','Salud'].includes(String(cat||''));}
+    function isIncomeCategory(cat){return['Sueldo','Beca'].includes(String(cat||''));}
+    function ahorroGeneralMes(month){
+      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria==='Ahorro'&&monthKey(m.fecha)===month).reduce((acc,m)=>acc+parseNum(m.monto),0);
+    }
     function reminderState(reminder){
       if(reminder?.estado==='hecho')return'hecho';
       const today=new Date();
@@ -441,7 +446,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#movMonto')?.focus();
     }
     function gastosPorCategoriaMes(month){const out={};data.movimientos.forEach((m)=>{if(m.tipo!=='gasto')return;const value=movimientoMontoMes(m,month);if(!value)return;out[m.categoria]=(out[m.categoria]||0)+value;});return out;}
-    function presupuestoRows(){return data.categorias.map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
+    function presupuestoRows(){return data.categorias.filter((cat)=>!isIncomeCategory(cat)).map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
     function deriveMetrics(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
       const gastosMes=data.movimientos.filter((m)=>m.tipo==='gasto'&&monthKey(m.fecha)<=addMonths(currentMonth,12)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
@@ -485,7 +490,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
       const totalPct=(data.metodo?.items||[]).reduce((acc,item)=>acc+parseNum(item.porcentaje),0);
       const gastosBasicos=presupuestoRows().reduce((acc,row)=>acc+row.gastado,0);
-      const ahorroActual=parseNum(data.fondo.ahorrado);
+      const ahorroActual=ahorroGeneralMes(currentMonth);
       const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
       const items=(data.metodo?.items||[]).map((item)=>({
         ...item,
@@ -497,7 +502,26 @@ alter publication supabase_realtime add table public.mf_states;</div>
         ahorro:ahorroActual,
         inversion:inversionesMes
       };
-      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'Método mensual'};
+      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'Método mensual',ahorroGeneral:ahorroActual,aportesFondo:deriveMetrics().aportesFondoMes,inversionesMes};
+    }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      if(text.includes('fin de mes')||text.includes('llego')){
+        return `Hoy la proyección estima un cierre de ${fmtMoney(projection.cierreEstimado)}. Ya salieron ${fmtMoney(projection.yaComprometido)} y te queda un margen diario de ${fmtMoney(projection.margenDiario)} hasta fin de mes.`;
+      }
+      if(text.includes('cuota')||text.includes('tarjeta')){
+        return `Para ${monthLabel(cuotasViewMonth)} tenés ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si querés revisar otro mes, cambialo en la pestaña Cuotas.`;
+      }
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria')){
+        return topBudget?`La categoría con más aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si querés, usá ese margen como referencia y evitá tocar el colchón del mes.`:`Todavía no hay suficientes presupuestos cargados. Si completás la pestaña Presupuestos, te puedo orientar mejor por categoría.`;
+      }
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
+        return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevás ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoría Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+      }
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos y ahorro. Hoy tenés ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     function autoAlerts(){
       const metrics=deriveMetrics(),alerts=[];
@@ -539,6 +563,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="large card">
           <div class="card-head"><h2>ProyecciÃ³n de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
           <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
+          <div class="hint" style="margin-top:10px">La proyecciÃ³n compara lo que ya gastaste con tus presupuestos y con el ritmo del mes. DespuÃ©s suma inversiones, aportes al fondo, planes y recordatorios pendientes para estimar cÃ³mo cerrarÃ­as.</div>
           <div class="inline-fields" style="margin-top:12px">
             <div class="list-item"><div><strong>Gasto fijo proyectado</strong><span>Presupuesto o gasto real, lo que sea mayor</span></div><div><strong>${fmtMoney(projection.gastoFijoProyectado)}</strong></div></div>
             <div class="list-item"><div><strong>Gasto variable proyectado</strong><span>Ritmo actual y presupuestos del mes</span></div><div><strong>${fmtMoney(projection.gastoVariableProyectado)}</strong></div></div>
@@ -548,6 +573,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           <div class="list" style="margin-top:12px">
             <div class="list-item"><div><strong>Ingreso cargado</strong><span>${fmtMoney(projection.ingresosMes)}</span></div><div><strong>${projection.comprometidoPct}%</strong><span class="muted">del ingreso comprometido</span></div></div>
             <div class="list-item"><div><strong>Libre real para decidir</strong><span>DespuÃ©s de fijos, inversiÃ³n y vencimientos</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong><span class="muted">Margen diario ${fmtMoney(projection.margenDiario)}</span></div></div>
+            <div class="list-item"><div><strong>Ya saliÃ³ este mes</strong><span>Gastos reales + inversiones + fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
           </div>
         </div>
         <div class="large card"><div class="card-head"><h2>Gastos por categorÃ­a</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
@@ -614,6 +640,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           <div class="list">
             <div class="list-item"><div><strong>Ingreso del mes</strong><span>Suma de ingresos cargados</span></div><div><strong>${fmtMoney(metodo.ingresosMes)}</strong></div></div>
             <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal debería dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
+            <div class="list-item"><div><strong>Ahorro general</strong><span>Cuenta sólo movimientos del mes en la categoría Ahorro</span></div><div><strong>${fmtMoney(metodo.ahorroGeneral)}</strong></div></div>
             <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribución suma 100% y queda balanceada.':'La distribución no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
           </div>
         </div>
@@ -649,7 +676,24 @@ alter publication supabase_realtime add table public.mf_states;</div>
               </tbody>
             </table>
           </div>
-          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, fondo acumulado para ahorro e inversiones cargadas del mes para inversiones.</div>
+          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, categoría Ahorro del mes para ahorro general e inversiones cargadas del mes para inversiones. El fondo de emergencia queda aparte y se sigue viendo en Fondo.</div>
+        </div>
+      `);
+    }
+    function renderAsistente(){
+      const messages=(data.chat||[]).slice(-10);
+      return sectionTemplate('asistente',`
+        <div class="medium card">
+          <div class="card-head"><h2>Asistente financiero</h2><span class="pill">Consejos rápidos</span></div>
+          <div class="hint">Podés preguntarle cosas como "¿llego a fin de mes?", "¿cómo vengo con cuotas?" o "¿qué presupuesto me sugerís para supermercado?".</div>
+          <form id="chatForm" class="grid" style="margin-top:12px">
+            <div class="large"><label for="chatInput">Tu consulta</label><textarea id="chatInput" placeholder="ej. ¿Cómo vengo con mis gastos variables este mes?"></textarea></div>
+            <div class="large"><button type="submit">Preguntar</button></div>
+          </form>
+        </div>
+        <div class="medium card">
+          <div class="card-head"><h2>Conversación</h2><span class="pill">${messages.length} mensajes</span></div>
+          <div class="list">${messages.length?messages.map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div><div><span class="muted">${fmtDate((msg.at||'').slice(0,10))}</span></div></div>`).join(''):'<div class="status ok">Todavía no hiciste ninguna consulta.</div>'}</div>
         </div>
       `);
     }
@@ -672,9 +716,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function renderCuotas(){
       const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1),grouped={};activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
       const forecast=cuotaForecast();
+      const monthItems=activeInstallmentsForMonth(cuotasViewMonth);
       return sectionTemplate('cuotas',`
         <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Resumen de lo que se viene</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${activeInstallmentsForMonth(currentMonth).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas} · inicio ${escapeHTML(monthLabel(installmentStartMonth(item)))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(cuotasViewMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(cuotasViewMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas} · primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
         <div class="large card"><div class="card-head"><h2>Proyección de cuotas futuras</h2><span class="pill">Próximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' · '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
       `);
@@ -728,7 +773,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       root.innerHTML=cells.join('');
     }
     function renderAll(){
-      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
+      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderAsistente(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
       populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();
     }
     function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria','#remCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
@@ -863,9 +908,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
       $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
       $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'MÃ©todo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
+      $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
       document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas),parseNum(item.cuotaActual||1)+1);persistAndRender();}));
+      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
       $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
