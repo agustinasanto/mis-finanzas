@@ -27,7 +27,7 @@
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;font-family:"Segoe UI",sans-serif;background:linear-gradient(180deg,#fff9fc,#ffeef6 50%,#fff5fa);color:var(--text)}
     body{min-height:100vh;position:relative}
-    body::before,body::after{content:"✿ ❀ ❁";position:fixed;font-size:44px;letter-spacing:18px;color:rgba(231,141,183,.13);pointer-events:none;z-index:0}
+    body::before,body::after{content:"âœ¿ â€ â";position:fixed;font-size:44px;letter-spacing:18px;color:rgba(231,141,183,.13);pointer-events:none;z-index:0}
     body::before{top:20px;left:18px}
     body::after{right:22px;bottom:18px}
     button,input,select,textarea{font:inherit;color:inherit}
@@ -123,16 +123,16 @@
     <div class="overlay-card">
       <div class="card-head">
         <div>
-          <h2>Conectá tu app ✿</h2>
-          <p class="muted">Podés sincronizar entre dispositivos con Supabase o empezar en local.</p>
+          <h2>ConectÃ¡ tu app âœ¿</h2>
+          <p class="muted">PodÃ©s sincronizar entre dispositivos con Supabase o empezar en local.</p>
         </div>
         <span class="pill">Setup inicial</span>
       </div>
       <ol class="setup-steps">
-        <li>Creá un proyecto en Supabase.</li>
-        <li>En SQL Editor corré el script sugerido para crear la tabla.</li>
-        <li>Copiá tu Project URL y la anon/public key.</li>
-        <li>Elegí un código personal para separar tus datos.</li>
+        <li>CreÃ¡ un proyecto en Supabase.</li>
+        <li>En SQL Editor corrÃ© el script sugerido para crear la tabla.</li>
+        <li>CopiÃ¡ tu Project URL y la anon/public key.</li>
+        <li>ElegÃ­ un cÃ³digo personal para separar tus datos.</li>
       </ol>
       <div class="grid">
         <div class="large">
@@ -144,7 +144,7 @@
           <input id="cfgKey" placeholder="eyJhbGciOi..." />
         </div>
         <div class="medium">
-          <label for="cfgCode">Código personal</label>
+          <label for="cfgCode">CÃ³digo personal</label>
           <input id="cfgCode" placeholder="ej. misfinanzas2026" />
         </div>
         <div class="large">
@@ -165,15 +165,15 @@ with check (true);
 alter publication supabase_realtime add table public.mf_states;</div>
         </div>
         <div class="large">
-          <label for="cfgHint">Qué vamos a probar</label>
-          <div class="status" id="cfgHint">Vamos a validar URL y key, leer tu fila por código y hacer una escritura de prueba segura antes de guardar.</div>
+          <label for="cfgHint">QuÃ© vamos a probar</label>
+          <div class="status" id="cfgHint">Vamos a validar URL y key, leer tu fila por cÃ³digo y hacer una escritura de prueba segura antes de guardar.</div>
         </div>
-        <div class="large"><div id="cfgStatus" class="status">Esperando URL, key y código para probar la conexión.</div></div>
+        <div class="large"><div id="cfgStatus" class="status">Esperando URL, key y cÃ³digo para probar la conexiÃ³n.</div></div>
       </div>
       <div class="setup-actions">
-        <button type="button" class="btn-soft" id="btnTestConnection">Probar conexión</button>
-        <button type="button" id="btnSaveConfig">Conectar y empezar ✿</button>
-        <button type="button" class="btn-soft" id="btnLocalMode">Usar solo en este dispositivo →</button>
+        <button type="button" class="btn-soft" id="btnTestConnection">Probar conexiÃ³n</button>
+        <button type="button" id="btnSaveConfig">Conectar y empezar âœ¿</button>
+        <button type="button" class="btn-soft" id="btnLocalMode">Usar solo en este dispositivo â†’</button>
       </div>
     </div>
   </div>
@@ -182,69 +182,71 @@ alter publication supabase_realtime add table public.mf_states;</div>
     <div class="overlay-card">
       <div class="card-head">
         <div>
-          <h2 id="loginTitle">Entrá a Mis Finanzas ✿</h2>
-          <p class="muted" id="loginSubtitle">Tu espacio queda protegido con tu contraseña.</p>
+          <h2>EntrÃ¡ a Mis Finanzas âœ¿</h2>
+          <p class="muted">AccedÃ© con tu cuenta de Google para usar la app en todos tus dispositivos.</p>
         </div>
         <span class="pill">Acceso</span>
       </div>
       <div class="card" style="background:var(--panel-soft);margin-bottom:14px">
-        <div class="hint" id="loginHint">Usá tu contraseña para desbloquear la app. Si querés, podés recordar este dispositivo para no volver a ingresarla cada vez.</div>
+        <div class="hint">Este acceso depende de que Google estÃ© habilitado como proveedor en Supabase Auth. Si ya lo estÃ¡, con un toque alcanza para entrar.</div>
       </div>
-      <form id="loginForm" class="grid">
-        <div class="large">
-          <label for="loginPassword">Contraseña</label>
-          <input id="loginPassword" type="password" placeholder="Ingresá tu contraseña" autocomplete="current-password" />
-        </div>
-        <div class="large hidden" id="loginConfirmWrap" style="display:none">
-          <label for="loginPasswordConfirm">Confirmar contraseña</label>
-          <input id="loginPasswordConfirm" type="password" placeholder="Repetí tu contraseña" autocomplete="new-password" />
-        </div>
-        <div class="large">
-          <label style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff">
-            <input id="loginRemember" type="checkbox" style="width:auto;margin:0" />
-            <span>Recordar este dispositivo</span>
-          </label>
-        </div>
-        <div class="large"><div id="loginStatus" class="status">Ingresá tu contraseña para desbloquear la app.</div></div>
+      <div class="grid">
+        <div class="large"><div id="loginStatus" class="status">EntrÃ¡ con Google para desbloquear la app.</div></div>
         <div class="large setup-actions">
-          <button type="submit" id="loginSubmitBtn">Entrar ✿</button>
-          <button type="button" class="btn-soft" id="btnLockLocalOnly">Seguir sin recordar</button>
+          <button type="button" id="loginGoogleBtn">Entrar con Google</button>
+          <button type="button" class="btn-soft" id="btnLockLocalOnly">Seguir sin bloquear</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
   <div class="modal hidden" id="quickModal">
     <div class="modal-card">
       <div class="card-head">
-        <div><h3>Carga rápida</h3><p class="muted">Guardá un movimiento sin salir de donde estás.</p></div>
+        <div><h3>Carga rÃ¡pida</h3><p class="muted">GuardÃ¡ un movimiento sin salir de donde estÃ¡s.</p></div>
         <button type="button" class="btn-soft" id="closeQuickModal">Cerrar</button>
       </div>
       <form id="quickForm" class="grid">
         <div class="medium"><label for="quickMonto">Monto</label><input id="quickMonto" type="number" min="0" step="0.01" required /></div>
         <div class="medium"><label for="quickFecha">Fecha</label><input id="quickFecha" type="date" required /></div>
         <div class="medium"><label for="quickTipo">Tipo</label><select id="quickTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
-        <div class="medium"><label for="quickCategoria">Categoría</label><select id="quickCategoria"></select></div>
+        <div class="medium"><label for="quickCategoria">CategorÃ­a</label><select id="quickCategoria"></select></div>
         <div class="medium"><label for="quickForma">Forma</label><select id="quickForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
         <div class="medium" id="quickCuentaWrap"><label for="quickCuenta">Tarjeta / cuenta</label><input id="quickCuenta" placeholder="ej. Visa" /></div>
-        <div class="medium" id="quickCuotasWrap"><label for="quickCuotas">Cantidad de cuotas</label><input id="quickCuotas" type="number" min="2" value="3" /></div>
+        <div class="medium" id="quickCuotasWrap"><label for="quickCuotas">Cantidad de cuotas</label><input id="quickCuotas" type="number" min="1" value="1" /></div>
         <div class="medium" id="quickInicioCobroWrap"><label for="quickInicioCobro">Primer mes de cobro</label><input id="quickInicioCobro" type="month" /></div>
+        <div class="large"><label for="quickDetalle">Nota</label><input id="quickDetalle" placeholder="ej. Uber al trabajo" /></div>
         <div class="large"><button type="submit">Guardar y cerrar</button></div>
       </form>
     </div>
   </div>
 
-  <button type="button" class="fab" id="fabQuick" aria-label="Cargar movimiento rápido">+</button>
+  <button type="button" class="fab btn-soft" id="assistantFab" aria-label="Abrir asistente" style="bottom:calc(92px + env(safe-area-inset-bottom,0px));font-size:1.45rem">âœ¿</button>
+  <button type="button" class="fab" id="fabQuick" aria-label="Cargar movimiento rÃ¡pido">+</button>
+
+  <div class="modal hidden" id="assistantModal">
+    <div class="modal-card">
+      <div class="card-head">
+        <div><h3>Asistente financiero</h3><p class="muted">Consultas rápidas sin salir de la página.</p></div>
+        <button type="button" class="btn-soft" id="closeAssistantModal">Cerrar</button>
+      </div>
+      <form id="assistantForm" class="grid">
+        <div class="large"><label for="assistantInput">Tu consulta</label><textarea id="assistantInput" placeholder="ej. Â¿Llego bien a fin de mes o me estoy pasando con los variables?"></textarea></div>
+        <div class="large"><button type="submit">Preguntar</button></div>
+      </form>
+      <div class="list" id="assistantMessages" style="margin-top:14px"></div>
+    </div>
+  </div>
 
   <div class="app">
     <header class="topbar">
       <div class="brand">
         <h1>Mis Finanzas</h1>
-        <p>Organizá gastos, cuotas, inversiones y metas sin perder de vista el mes.</p>
+        <p>OrganizÃ¡ gastos, cuotas, inversiones y metas sin perder de vista el mes.</p>
       </div>
       <div class="top-actions">
         <div class="sync-pill" id="syncState">Modo local activo</div>
-        <button type="button" class="btn-soft" id="btnRelock">Bloquear</button>
+        <button type="button" class="btn-soft" id="btnRelock">Salir</button>
         <div class="tabs" id="tabs"></div>
       </div>
     </header>
@@ -252,15 +254,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
   </div>
 
   <script>
-    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',LOGIN_KEY='mf_unlock_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
-    const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','Método mensual'],['asistente','Asistente'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
-    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],auth:{passwordHash:''},metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y básicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
+    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
+    const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
+    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
     DEF.fondo.aportes=[];
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
-    const MOJIBAKE_FIXES=[['ÃƒÂ¡','á'],['ÃƒÂ©','é'],['ÃƒÂ­','í'],['ÃƒÂ³','ó'],['ÃƒÂº','ú'],['ÃƒÂ±','ñ'],['ÃƒÂ','Á'],['ÃƒÂ‰','É'],['ÃƒÂ','Í'],['ÃƒÂ“','Ó'],['ÃƒÂš','Ú'],['ÃƒÂ‘','Ñ'],['Ã‚Â°','°'],['Ã‚Â·','·'],['Ã‚Âº','º'],['Ã‚Â»','»'],['Ã‚Â«','«'],['Ã¡','á'],['Ã©','é'],['Ã­','í'],['Ã³','ó'],['Ãº','ú'],['Ã±','ñ'],['Ã','Á'],['Ã‰','É'],['Ã','Í'],['Ã“','Ó'],['Ãš','Ú'],['Ã‘','Ñ'],['Â·','·'],['Â°','°'],['Âº','º'],['Â»','»'],['Â«','«'],['â†’','→'],['âœ¿','✿'],['â€','❀'],['â','❁'],['â€¦','…']];
+    const MOJIBAKE_FIXES=[['ÃƒÆ’Ã‚Â¡','Ã¡'],['ÃƒÆ’Ã‚Â©','Ã©'],['ÃƒÆ’Ã‚Â­','Ã­'],['ÃƒÆ’Ã‚Â³','Ã³'],['ÃƒÆ’Ã‚Âº','Ãº'],['ÃƒÆ’Ã‚Â±','Ã±'],['ÃƒÆ’Ã‚Â','Ã'],['ÃƒÆ’Ã‚â€°','Ã‰'],['ÃƒÆ’Ã‚Â','Ã'],['ÃƒÆ’Ã‚â€œ','Ã“'],['ÃƒÆ’Ã‚Å¡','Ãš'],['ÃƒÆ’Ã‚â€˜','Ã‘'],['Ãƒâ€šÃ‚Â°','Â°'],['Ãƒâ€šÃ‚Â·','Â·'],['Ãƒâ€šÃ‚Âº','Âº'],['Ãƒâ€šÃ‚Â»','Â»'],['Ãƒâ€šÃ‚Â«','Â«'],['ÃƒÂ¡','Ã¡'],['ÃƒÂ©','Ã©'],['ÃƒÂ­','Ã­'],['ÃƒÂ³','Ã³'],['ÃƒÂº','Ãº'],['ÃƒÂ±','Ã±'],['ÃƒÂ','Ã'],['Ãƒâ€°','Ã‰'],['ÃƒÂ','Ã'],['Ãƒâ€œ','Ã“'],['ÃƒÅ¡','Ãš'],['Ãƒâ€˜','Ã‘'],['Ã‚Â·','Â·'],['Ã‚Â°','Â°'],['Ã‚Âº','Âº'],['Ã‚Â»','Â»'],['Ã‚Â«','Â«'],['Ã¢â€ â€™','â†’'],['Ã¢Å“Â¿','âœ¿'],['Ã¢Ââ‚¬','â€'],['Ã¢ÂÂ','â'],['Ã¢â‚¬Â¦','â€¦']];
     const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
     const fmtDate=(v)=>{if(!v)return'Sin fecha';const d=new Date(v+'T00:00:00');return Number.isNaN(d.getTime())?v:d.toLocaleDateString('es-AR');};
     const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
@@ -268,7 +270,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const parseNum=(v)=>Number(v||0);
     const monthKey=(value)=>{const d=value?new Date(value+'T00:00:00'):new Date();return d.toISOString().slice(0,7);};
     const currentMonth=monthKey();
-    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig(),cuotasViewMonth=currentMonth,isUnlocked=false;
+    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig(),cuotasViewMonth=currentMonth,isUnlocked=false,authUser=null,authUnsub=null,cuotasManualMonth=false;
     const addMonths=(base,offset)=>{const [y,m]=base.split('-').map(Number);return new Date(y,m-1+offset,1).toISOString().slice(0,7);};
     const monthLabel=(key)=>{const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});};
     const escapeHTML=(str)=>String(str??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -313,43 +315,14 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
-    function hashPassword(value){
-      const text=String(value||'');
-      let hash=5381;
-      for(let i=0;i<text.length;i++)hash=((hash<<5)+hash)+text.charCodeAt(i);
-      return `p_${(hash>>>0).toString(36)}`;
-    }
-    function currentPasswordHash(){return String(data?.auth?.passwordHash||'').trim();}
-    function hasLoginPassword(){return !!currentPasswordHash();}
-    function isRememberedDevice(){try{return !!currentPasswordHash()&&localStorage.getItem(LOGIN_KEY)===currentPasswordHash();}catch(err){return false;}}
-    function rememberDevice(remember){try{if(remember&&currentPasswordHash())localStorage.setItem(LOGIN_KEY,currentPasswordHash());else localStorage.removeItem(LOGIN_KEY);}catch(err){}}
-    function updateLoginMode(){
-      const creating=!hasLoginPassword();
-      $('#loginTitle')&&( $('#loginTitle').textContent=creating?'Creá tu contraseña ✿':'Entrá a Mis Finanzas ✿');
-      $('#loginSubtitle')&&( $('#loginSubtitle').textContent=creating?'Definí una contraseña para bloquear la app en todos tus dispositivos.':'Tu espacio queda protegido con tu contraseña.');
-      $('#loginHint')&&( $('#loginHint').textContent=creating?'Esta contraseña queda separada del código de sincronización. Como la app es estática, sirve para bloquear la vista de la app, no como seguridad de servidor.':'Usá tu contraseña para desbloquear la app. Si querés, podés recordar este dispositivo para no volver a ingresarla cada vez.');
-      $('#loginConfirmWrap')&&($('#loginConfirmWrap').style.display=creating?'':'none');
-      $('#loginSubmitBtn')&&( $('#loginSubmitBtn').textContent=creating?'Crear contraseña ✿':'Entrar ✿');
-      $('#loginPassword')&&( $('#loginPassword').placeholder=creating?'Creá una contraseña':'Ingresá tu contraseña');
-      $('#loginPasswordConfirm')&&( $('#loginPasswordConfirm').value='');
-      if(!$('#loginStatus')?.textContent || $('#loginStatus')?.dataset.mode!==String(creating)){
-        setLoginStatus(creating?'warn':'ok',creating?'Todavía no tenés contraseña. Creala para activar el acceso.':'Ingresá tu contraseña para desbloquear la app.');
-        if($('#loginStatus'))$('#loginStatus').dataset.mode=String(creating);
-      }
-    }
     function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=text;}
-    function unlockApp(remember=false){
+    function unlockApp(){
       isUnlocked=true;
-      rememberDevice(remember);
       $('#loginOverlay')?.classList.add('hidden');
       setLoginStatus('ok','Acceso concedido.');
     }
-    function lockApp(message='Ingresá tu contraseña para desbloquear la app.'){
+    function lockApp(message='EntrÃ¡ con Google para desbloquear la app.'){
       isUnlocked=false;
-      updateLoginMode();
-      $('#loginPassword')&&($('#loginPassword').value='');
-      $('#loginPasswordConfirm')&&($('#loginPasswordConfirm').value='');
-      $('#loginRemember')&&($('#loginRemember').checked=isRememberedDevice());
       setLoginStatus('warn',message);
       if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
     }
@@ -362,7 +335,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         return;
       }
       $('#setupOverlay')?.classList.add('hidden');
-      if(isUnlocked||isRememberedDevice())unlockApp(isRememberedDevice());
+      if(syncMode==='local'||authUser)unlockApp();
       else lockApp();
     }
     function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
@@ -376,12 +349,30 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return finalUrl;
     }
     function createSupabaseClient(url,key){
-      return window.supabase.createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+      return window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
     }
     function destroySupabaseClient(){
       if(sbChannel&&sbClient){try{sbClient.removeChannel(sbChannel);}catch(err){}}
       if(sbPoller){clearInterval(sbPoller)}
-      sbClient=null;sbChannel=null;sbPoller=null;lastRemoteStamp='';activeCode='';
+      if(authUnsub){try{authUnsub.unsubscribe();}catch(err){}}
+      sbClient=null;sbChannel=null;sbPoller=null;lastRemoteStamp='';activeCode='';authUnsub=null;authUser=null;
+    }
+    function bindAuthState(client){
+      if(authUnsub){try{authUnsub.unsubscribe();}catch(err){}}
+      client.auth.getSession().then(({data})=>{authUser=data?.session?.user||null;refreshAccessOverlays();}).catch(()=>{});
+      const sub=client.auth.onAuthStateChange((_event,session)=>{authUser=session?.user||null;refreshAccessOverlays();});
+      authUnsub=sub?.data?.subscription||null;
+    }
+    async function signInWithGoogle(){
+      if(!sbClient){setLoginStatus('err','Primero necesitás una conexión válida con Supabase.');return;}
+      setLoginStatus('warn','Redirigiendo a Google...');
+      const {error}=await sbClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.href}});
+      if(error)setLoginStatus('err','No pudimos iniciar sesión con Google. Revisá que el proveedor esté habilitado en Supabase Auth.');
+    }
+    async function signOutGoogle(){
+      if(sbClient){try{await sbClient.auth.signOut();}catch(err){}}
+      authUser=null;
+      lockApp('Tu sesión se cerró. Volvé a entrar con Google para seguir.');
     }
     function classifySupabaseError(error){
       const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
@@ -399,6 +390,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!safeCode)throw new Error('missing-code');
       if(!apiKey)throw new Error('missing-key');
       sbClient=createSupabaseClient(dbURL,apiKey);
+      bindAuthState(sbClient);
       activeCode=safeCode;
       return{client:sbClient,dbURL,safeCode,apiKey};
     }
@@ -474,15 +466,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function movimientoMontoMes(mov,month){
       const monto=parseNum(mov.monto);
       if(mov.tipo!=='gasto')return monto;
-      if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>1){const cuota=monto/parseNum(mov.cuotas);return cuotaMonthKeys(mov).includes(month)?cuota:0;}
+      if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>=1){const cuota=monto/parseNum(mov.cuotas);return cuotaMonthKeys(mov).includes(month)?cuota:0;}
       return monthKey(mov.fecha)===month?monto:0;
     }
     function installmentStartMonth(mov){return mov?.inicioCobro||monthKey(mov?.fecha);}
     function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[installmentStartMonth(mov)];const base=installmentStartMonth(mov);return Array.from({length:total},(_,i)=>addMonths(base,i));}
     function activeInstallmentsForMonth(month){
-      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month);return idx===-1?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha,inicioCobro:installmentStartMonth(m)};}).filter(Boolean);
+      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month),nextPendingIdx=Math.max(0,parseNum(m.cuotaActual||1)-1);return idx===-1||idx<nextPendingIdx?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha,inicioCobro:installmentStartMonth(m)};}).filter(Boolean);
     }
-    function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total);return Math.max(0,total-actual+1);}
+    function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total+1);return Math.max(0,total-actual+1);}
     function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
     function latestMovimientos(limit=8){return[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,limit);}
     function isFixedCategory(cat){return['Alquiler','Servicios','Transporte','Moto','Facultad','Gimnasio','Salud'].includes(String(cat||''));}
@@ -539,7 +531,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#movMonto')?.focus();
     }
     function gastosPorCategoriaMes(month){const out={};data.movimientos.forEach((m)=>{if(m.tipo!=='gasto')return;const value=movimientoMontoMes(m,month);if(!value)return;out[m.categoria]=(out[m.categoria]||0)+value;});return out;}
-    function presupuestoRows(){return data.categorias.filter((cat)=>!isIncomeCategory(cat)).map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
+    function presupuestoRows(){return data.categorias.filter((cat)=>!isIncomeCategory(cat)).map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
     function deriveMetrics(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
       const gastosMes=data.movimientos.filter((m)=>m.tipo==='gasto'&&monthKey(m.fecha)<=addMonths(currentMonth,12)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
@@ -573,8 +565,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const comprometidoPct=metrics.ingresosMes?Math.round(comprometidoTotal/metrics.ingresosMes*100):0;
       const libreReal=Math.max(0,metrics.ingresosMes-gastoFijoProyectado-inversionesMes-aportesFondoMes-recordatoriosMes);
       let estado='ok',mensaje='Vas cerrando el mes con margen.';
-      if(metrics.ingresosMes===0){estado='warn';mensaje='TodavÃ­a no hay ingresos cargados para proyectar el cierre del mes.';}
-      else if(cierreEstimado<0){estado='err';mensaje='Si seguÃ­s asÃ­ y ademÃ¡s concretÃ¡s lo planeado, cerrarÃ­as el mes en negativo.';}
+      if(metrics.ingresosMes===0){estado='warn';mensaje='TodavÃƒÂ­a no hay ingresos cargados para proyectar el cierre del mes.';}
+      else if(cierreEstimado<0){estado='err';mensaje='Si seguÃƒÂ­s asÃƒÂ­ y ademÃƒÂ¡s concretÃƒÂ¡s lo planeado, cerrarÃƒÂ­as el mes en negativo.';}
       else if(comprometidoPct>=85){estado='warn';mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.';}
       else if(gastosVariables>0&&gastoVariablePace>gastoVariableProyectado*1.1){estado='warn';mensaje='El gasto variable viene acelerado y te puede comer margen antes de cerrar el mes.';}
       return{...metrics,inversionesMes,aportesFondoMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
@@ -595,7 +587,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         ahorro:ahorroActual,
         inversion:inversionesMes
       };
-      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'Método mensual',ahorroGeneral:ahorroActual,aportesFondo:deriveMetrics().aportesFondoMes,inversionesMes};
+      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'MÃ©todo mensual',ahorroGeneral:ahorroActual,aportesFondo:deriveMetrics().aportesFondoMes,inversionesMes};
     }
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
@@ -603,25 +595,25 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const metrics=deriveMetrics();
       const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
       if(text.includes('fin de mes')||text.includes('llego')){
-        return `Hoy la proyección estima un cierre de ${fmtMoney(projection.cierreEstimado)}. Ya salieron ${fmtMoney(projection.yaComprometido)} y te queda un margen diario de ${fmtMoney(projection.margenDiario)} hasta fin de mes.`;
+        return `Hoy la proyecciÃ³n estima un cierre de ${fmtMoney(projection.cierreEstimado)}. Ya salieron ${fmtMoney(projection.yaComprometido)} y te queda un margen diario de ${fmtMoney(projection.margenDiario)} hasta fin de mes.`;
       }
       if(text.includes('cuota')||text.includes('tarjeta')){
-        return `Para ${monthLabel(cuotasViewMonth)} tenés ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si querés revisar otro mes, cambialo en la pestaña Cuotas.`;
+        return `Para ${monthLabel(cuotasViewMonth)} tenÃ©s ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si querÃ©s revisar otro mes, cambialo en la pestaÃ±a Cuotas.`;
       }
       if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria')){
-        return topBudget?`La categoría con más aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si querés, usá ese margen como referencia y evitá tocar el colchón del mes.`:`Todavía no hay suficientes presupuestos cargados. Si completás la pestaña Presupuestos, te puedo orientar mejor por categoría.`;
+        return topBudget?`La categorÃ­a con mÃ¡s aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si querÃ©s, usÃ¡ ese margen como referencia y evitÃ¡ tocar el colchÃ³n del mes.`:`TodavÃ­a no hay suficientes presupuestos cargados. Si completÃ¡s la pestaÃ±a Presupuestos, te puedo orientar mejor por categorÃ­a.`;
       }
       if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
-        return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevás ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoría Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+        return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevÃ¡s ${fmtMoney(ahorroGeneralMes(currentMonth))} en categorÃ­a Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
       }
-      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos y ahorro. Hoy tenés ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos y ahorro. Hoy tenÃ©s ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     function autoAlerts(){
       const metrics=deriveMetrics(),alerts=[];
-      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenÃ©s ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
-      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya superÃ³ el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
-      pendingRemindersForMonth(currentMonth).forEach((item)=>{const today=new Date(),due=new Date(item.fecha+'T00:00:00');const diff=Math.ceil((due-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);if(item.estado==='vencido')alerts.push({type:'err',text:`VenciÃ³ "${item.titulo}" por ${fmtMoney(item.monto)}. MarcÃ¡lo o reprogramalo.`});else if(diff<=3)alerts.push({type:'warn',text:`Se viene "${item.titulo}" en ${Math.max(0,diff)} dÃ­as por ${fmtMoney(item.monto)}.`});});
-      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitÃ¡s ahorrar ${fmtMoney(need)} por mes.`});});
+      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenÃƒÂ©s ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
+      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya superÃƒÂ³ el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
+      pendingRemindersForMonth(currentMonth).forEach((item)=>{const today=new Date(),due=new Date(item.fecha+'T00:00:00');const diff=Math.ceil((due-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);if(item.estado==='vencido')alerts.push({type:'err',text:`VenciÃƒÂ³ "${item.titulo}" por ${fmtMoney(item.monto)}. MarcÃƒÂ¡lo o reprogramalo.`});else if(diff<=3)alerts.push({type:'warn',text:`Se viene "${item.titulo}" en ${Math.max(0,diff)} dÃƒÂ­as por ${fmtMoney(item.monto)}.`});});
+      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitÃƒÂ¡s ahorrar ${fmtMoney(need)} por mes.`});});
       if(!alerts.length)alerts.push({type:'ok',text:'Sin alertas urgentes. El mes viene bajo control.'});
       return alerts;
     }
@@ -645,40 +637,40 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection(),reminders=reminderRows(6);
       const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
       const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
-      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizaciÃ³n blue.</span></div></div>`;
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizaciÃƒÂ³n blue.</span></div></div>`;
       return sectionTemplate('inicio',`
         <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.egresosMes)} salidas totales</span></div></div>
-        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Más ${fmtMoney(metrics.inversionesMes+metrics.aportesFondoMes)} entre inversión y fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>MÃ¡s ${fmtMoney(metrics.inversionesMes+metrics.aportesFondoMes)} entre inversiÃ³n y fondo</span></div></div>
         <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
         <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
-        <div class="medium card"><div class="card-head"><h2>Alertas automÃ¡ticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Ãšltimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automÃƒÂ¡ticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">ÃƒÅ¡ltimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
         <div class="large card">
-          <div class="card-head"><h2>ProyecciÃ³n de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="card-head"><h2>ProyecciÃƒÂ³n de fin de mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
           <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
-          <div class="hint" style="margin-top:10px">La proyecciÃ³n compara lo que ya gastaste con tus presupuestos y con el ritmo del mes. DespuÃ©s suma inversiones, aportes al fondo, planes y recordatorios pendientes para estimar cÃ³mo cerrarÃ­as.</div>
+          <div class="hint" style="margin-top:10px">La proyecciÃƒÂ³n compara lo que ya gastaste con tus presupuestos y con el ritmo del mes. DespuÃƒÂ©s suma inversiones, aportes al fondo, planes y recordatorios pendientes para estimar cÃƒÂ³mo cerrarÃƒÂ­as.</div>
           <div class="inline-fields" style="margin-top:12px">
             <div class="list-item"><div><strong>Gasto fijo proyectado</strong><span>Presupuesto o gasto real, lo que sea mayor</span></div><div><strong>${fmtMoney(projection.gastoFijoProyectado)}</strong></div></div>
             <div class="list-item"><div><strong>Gasto variable proyectado</strong><span>Ritmo actual y presupuestos del mes</span></div><div><strong>${fmtMoney(projection.gastoVariableProyectado)}</strong></div></div>
-            <div class="list-item"><div><strong>Extras pendientes</strong><span>Planes y recordatorios todavÃ­a abiertos</span></div><div><strong>${fmtMoney(projection.planesMes+projection.recordatoriosMes)}</strong></div></div>
-            <div class="list-item"><div><strong>Cierre estimado</strong><span>${projection.diasRestantes} dÃ­as para cerrar el mes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
+            <div class="list-item"><div><strong>Extras pendientes</strong><span>Planes y recordatorios todavÃƒÂ­a abiertos</span></div><div><strong>${fmtMoney(projection.planesMes+projection.recordatoriosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Cierre estimado</strong><span>${projection.diasRestantes} dÃƒÂ­as para cerrar el mes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
           </div>
           <div class="list" style="margin-top:12px">
             <div class="list-item"><div><strong>Ingreso cargado</strong><span>${fmtMoney(projection.ingresosMes)}</span></div><div><strong>${projection.comprometidoPct}%</strong><span class="muted">del ingreso comprometido</span></div></div>
-            <div class="list-item"><div><strong>Libre real para decidir</strong><span>DespuÃ©s de fijos, inversiÃ³n y vencimientos</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong><span class="muted">Margen diario ${fmtMoney(projection.margenDiario)}</span></div></div>
-            <div class="list-item"><div><strong>Ya saliÃ³ este mes</strong><span>Gastos reales + inversiones + fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
+            <div class="list-item"><div><strong>Libre real para decidir</strong><span>DespuÃƒÂ©s de fijos, inversiÃƒÂ³n y vencimientos</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong><span class="muted">Margen diario ${fmtMoney(projection.margenDiario)}</span></div></div>
+            <div class="list-item"><div><strong>Ya saliÃƒÂ³ este mes</strong><span>Gastos reales + inversiones + fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
           </div>
         </div>
-        <div class="large card"><div class="card-head"><h2>Gastos por categorÃ­a</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
-        <div class="medium card"><div class="card-head"><h2>PrÃ³ximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Â· cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` Â· ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenÃ©s vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categorÃƒÂ­a</h2><span class="pill">Canvas</span></div><canvas id="spendChart" width="1100" height="280"></canvas></div>
+        <div class="medium card"><div class="card-head"><h2>PrÃƒÂ³ximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Ã‚Â· cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` Ã‚Â· ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenÃƒÂ©s vencimientos cargados por ahora.</div>'}</div></div>
         <div class="medium card">
           <div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div>
           <div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div>
           <div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div>
-          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'IngresÃ¡ un monto para convertir usando dÃ³lar blue venta/compra.':'No disponible'}</div></div>
+          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'IngresÃƒÂ¡ un monto para convertir usando dÃƒÂ³lar blue venta/compra.':'No disponible'}</div></div>
         </div>
-        <div class="large card"><div class="card-head"><h2>Ãšltimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃ­a</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">TodavÃ­a no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+        <div class="large card"><div class="card-head"><h2>ÃƒÅ¡ltimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃƒÂ­a</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">TodavÃƒÂ­a no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
       `);
     }
     function renderMovimientos(){
@@ -688,33 +680,33 @@ alter publication supabase_realtime add table public.mf_states;</div>
           <div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
           <div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div>
           <div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div>
-          <div class="medium"><label for="movCategoria">CategorÃ­a</label><select id="movCategoria"></select></div>
+          <div class="medium"><label for="movCategoria">CategorÃƒÂ­a</label><select id="movCategoria"></select></div>
           <div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
           <div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div>
           <div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div>
-          <div class="medium mov-cuotas"><label for="movCuotaActual">NÂ° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
+          <div class="medium mov-cuotas"><label for="movCuotaActual">NÃ‚Â° cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div>
           <div class="medium mov-cuotas"><label for="movInicioCobro">Primer mes de cobro</label><input id="movInicioCobro" type="month" /></div>
           <div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div>
-          <div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar ediciÃ³n</button></div>
+          <div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar ediciÃƒÂ³n</button></div>
         </form></div>
-        <div class="medium card"><div class="card-head"><h2>CategorÃ­as personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categorÃ­a" /><button type="submit">Agregar categorÃ­a</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
-        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${data.movimientos.length} movimientos</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃ­a</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos aÃºn.</td></tr>'}</tbody></table></div></div>
+        <div class="medium card"><div class="card-head"><h2>CategorÃƒÂ­as personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categorÃƒÂ­a" /><button type="submit">Agregar categorÃƒÂ­a</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${data.movimientos.length} movimientos</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>CategorÃƒÂ­a</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos aÃƒÂºn.</td></tr>'}</tbody></table></div></div>
       `);
     }
     function renderPresupuestos(){
       const rows=presupuestoRows();
       return sectionTemplate('presupuestos',`
-        <div class="large card"><div class="card-head"><h2>Presupuesto mensual por categoría</h2><span class="pill">Impacto de cuotas incluido</span></div><form id="budgetForm" class="grid">${rows.map((row)=>`<div class="medium"><label for="budget_${escapeHTML(row.cat)}">${escapeHTML(row.cat)}</label><input id="budget_${escapeHTML(row.cat)}" data-budget="${escapeHTML(row.cat)}" type="number" min="0" step="0.01" value="${row.presupuesto||''}" placeholder="Asignar monto" /></div>`).join('')}<div class="large"><button type="submit">Guardar presupuestos</button></div></form></div>
-        <div class="large card"><div class="card-head"><h2>Seguimiento</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${rows.map((row)=>`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(row.cat)}</strong><div class="hint">Gastado ${fmtMoney(row.gastado)}${row.cuotas?` · Cuotas dentro del mes ${fmtMoney(row.cuotas)}`:''}</div><div class="progress" style="margin-top:10px"><span style="width:${row.pct}%"></span></div></div><div style="min-width:150px"><strong>${row.presupuesto?`${row.pct}%`:'Sin presupuesto'}</strong><span class="muted">${fmtMoney(row.presupuesto)}</span></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Presupuesto mensual por categorÃ­a</h2><span class="pill">Impacto de cuotas incluido</span></div><form id="budgetForm" class="grid">${rows.map((row)=>`<div class="medium"><label for="budget_${escapeHTML(row.cat)}">${escapeHTML(row.cat)}</label><input id="budget_${escapeHTML(row.cat)}" data-budget="${escapeHTML(row.cat)}" type="number" min="0" step="0.01" value="${row.presupuesto||''}" placeholder="Asignar monto" /></div>`).join('')}<div class="large"><button type="submit">Guardar presupuestos</button></div></form></div>
+        <div class="large card"><div class="card-head"><h2>Seguimiento</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${rows.map((row)=>`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(row.cat)}</strong><div class="hint">Gastado ${fmtMoney(row.gastado)}${row.cuotas?` Â· Cuotas dentro del mes ${fmtMoney(row.cuotas)}`:''}</div><div class="progress" style="margin-top:10px"><span style="width:${row.pct}%"></span></div></div><div style="min-width:150px"><strong>${row.presupuesto?`${row.pct}%`:'Sin presupuesto'}</strong><span class="muted">${fmtMoney(row.presupuesto)}</span></div></div>`).join('')}</div></div>
       `);
     }
     function renderMetodo(){
       const metodo=deriveMetodoMensual();
       return sectionTemplate('metodo',`
         <div class="medium card">
-          <div class="card-head"><h2>Método mensual</h2><span class="pill">${escapeHTML(metodo.nombre)}</span></div>
+          <div class="card-head"><h2>MÃ©todo mensual</h2><span class="pill">${escapeHTML(metodo.nombre)}</span></div>
           <form id="metodoForm" class="grid">
-            <div class="large"><label for="metodoNombre">Nombre del método</label><input id="metodoNombre" value="${escapeHTML(data.metodo.nombre||'')}" placeholder="ej. 50 / 30 / 20" /></div>
+            <div class="large"><label for="metodoNombre">Nombre del mÃ©todo</label><input id="metodoNombre" value="${escapeHTML(data.metodo.nombre||'')}" placeholder="ej. 50 / 30 / 20" /></div>
             ${data.metodo.items.map((item)=>`
               <div class="medium">
                 <label for="metodo_nombre_${item.id}">Bloque</label>
@@ -725,20 +717,20 @@ alter publication supabase_realtime add table public.mf_states;</div>
                 <input id="metodo_pct_${item.id}" data-metodo-pct="${item.id}" type="number" min="0" max="100" step="0.01" value="${parseNum(item.porcentaje)}" />
               </div>
             `).join('')}
-            <div class="large"><button type="submit">Guardar método</button></div>
+            <div class="large"><button type="submit">Guardar mÃ©todo</button></div>
           </form>
         </div>
         <div class="medium card">
-          <div class="card-head"><h2>Base del cálculo</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="card-head"><h2>Base del cÃ¡lculo</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
           <div class="list">
             <div class="list-item"><div><strong>Ingreso del mes</strong><span>Suma de ingresos cargados</span></div><div><strong>${fmtMoney(metodo.ingresosMes)}</strong></div></div>
-            <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal debería dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
-            <div class="list-item"><div><strong>Ahorro general</strong><span>Cuenta sólo movimientos del mes en la categoría Ahorro</span></div><div><strong>${fmtMoney(metodo.ahorroGeneral)}</strong></div></div>
-            <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribución suma 100% y queda balanceada.':'La distribución no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
+            <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal deberÃ­a dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
+            <div class="list-item"><div><strong>Ahorro general</strong><span>Cuenta sÃ³lo movimientos del mes en la categorÃ­a Ahorro</span></div><div><strong>${fmtMoney(metodo.ahorroGeneral)}</strong></div></div>
+            <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribuciÃ³n suma 100% y queda balanceada.':'La distribuciÃ³n no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
           </div>
         </div>
         <div class="large card">
-          <div class="card-head"><h2>Distribución aplicada al sueldo</h2><span class="pill">Se recalcula sola</span></div>
+          <div class="card-head"><h2>DistribuciÃ³n aplicada al sueldo</h2><span class="pill">Se recalcula sola</span></div>
           <div class="list">
             ${metodo.items.map((item)=>`
               <div class="list-item">
@@ -756,7 +748,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           </div>
         </div>
         <div class="large card">
-          <div class="card-head"><h2>Referencia rápida</h2><span class="pill">Comparación actual</span></div>
+          <div class="card-head"><h2>Referencia rÃ¡pida</h2><span class="pill">ComparaciÃ³n actual</span></div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Bloque</th><th>Objetivo</th><th>Referencia actual</th><th>Diferencia</th></tr></thead>
@@ -764,12 +756,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
                 ${metodo.items.map((item)=>{
                   const ref=item.id==='fijos'?metodo.usados.fijos:item.id==='ahorro'?metodo.usados.ahorro:item.id==='inversion'?metodo.usados.inversion:0;
                   const diff=ref-item.montoObjetivo;
-                  return `<tr><td>${escapeHTML(item.nombre)}</td><td>${fmtMoney(item.montoObjetivo)}</td><td>${fmtMoney(ref)}</td><td>${diff===0?'En línea':diff>0?`+${fmtMoney(diff)}`:`-${fmtMoney(Math.abs(diff))}`}</td></tr>`;
+                  return `<tr><td>${escapeHTML(item.nombre)}</td><td>${fmtMoney(item.montoObjetivo)}</td><td>${fmtMoney(ref)}</td><td>${diff===0?'En lÃ­nea':diff>0?`+${fmtMoney(diff)}`:`-${fmtMoney(Math.abs(diff))}`}</td></tr>`;
                 }).join('')}
               </tbody>
             </table>
           </div>
-          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, categoría Ahorro del mes para ahorro general e inversiones cargadas del mes para inversiones. El fondo de emergencia queda aparte y se sigue viendo en Fondo.</div>
+          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, categorÃ­a Ahorro del mes para ahorro general e inversiones cargadas del mes para inversiones. El fondo de emergencia queda aparte y se sigue viendo en Fondo.</div>
         </div>
       `);
     }
@@ -777,48 +769,50 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const messages=(data.chat||[]).slice(-10);
       return sectionTemplate('asistente',`
         <div class="medium card">
-          <div class="card-head"><h2>Asistente financiero</h2><span class="pill">Consejos rápidos</span></div>
-          <div class="hint">Podés preguntarle cosas como "¿llego a fin de mes?", "¿cómo vengo con cuotas?" o "¿qué presupuesto me sugerís para supermercado?".</div>
+          <div class="card-head"><h2>Asistente financiero</h2><span class="pill">Consejos rÃ¡pidos</span></div>
+          <div class="hint">PodÃ©s preguntarle cosas como "Â¿llego a fin de mes?", "Â¿cÃ³mo vengo con cuotas?" o "Â¿quÃ© presupuesto me sugerÃ­s para supermercado?".</div>
           <form id="chatForm" class="grid" style="margin-top:12px">
-            <div class="large"><label for="chatInput">Tu consulta</label><textarea id="chatInput" placeholder="ej. ¿Cómo vengo con mis gastos variables este mes?"></textarea></div>
+            <div class="large"><label for="chatInput">Tu consulta</label><textarea id="chatInput" placeholder="ej. Â¿CÃ³mo vengo con mis gastos variables este mes?"></textarea></div>
             <div class="large"><button type="submit">Preguntar</button></div>
           </form>
         </div>
         <div class="medium card">
-          <div class="card-head"><h2>Conversación</h2><span class="pill">${messages.length} mensajes</span></div>
-          <div class="list">${messages.length?messages.map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div><div><span class="muted">${fmtDate((msg.at||'').slice(0,10))}</span></div></div>`).join(''):'<div class="status ok">Todavía no hiciste ninguna consulta.</div>'}</div>
+          <div class="card-head"><h2>ConversaciÃ³n</h2><span class="pill">${messages.length} mensajes</span></div>
+          <div class="list">${messages.length?messages.map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div><div><span class="muted">${fmtDate((msg.at||'').slice(0,10))}</span></div></div>`).join(''):'<div class="status ok">TodavÃ­a no hiciste ninguna consulta.</div>'}</div>
         </div>
       `);
     }
     function renderInversiones(){
       return sectionTemplate('inversiones',`
-        <div class="medium card"><div class="card-head"><h2>Registrar inversión</h2><span class="pill">FCI / USD / CEDEAR / PF</span></div><form id="invForm" class="grid">
-          <div class="medium"><label for="invTipo">Tipo</label><select id="invTipo"><option>FCI</option><option>Compra de dólares</option><option>CEDEAR</option><option>Plazo fijo</option><option>Otro</option></select></div>
-          <div class="medium"><label for="invActivo">Activo</label><input id="invActivo" placeholder="ej. SPY / Dólar blue" required /></div>
+        <div class="medium card"><div class="card-head"><h2>Registrar inversiÃ³n</h2><span class="pill">FCI / USD / CEDEAR / PF</span></div><form id="invForm" class="grid">
+          <div class="medium"><label for="invTipo">Tipo</label><select id="invTipo"><option>FCI</option><option>Compra de dÃ³lares</option><option>CEDEAR</option><option>Plazo fijo</option><option>Otro</option></select></div>
+          <div class="medium"><label for="invActivo">Activo</label><input id="invActivo" placeholder="ej. SPY / DÃ³lar blue" required /></div>
           <div class="medium"><label for="invMonto">Monto</label><input id="invMonto" type="number" min="0" step="0.01" required /></div>
           <div class="medium"><label for="invCuenta">Cuenta</label><input id="invCuenta" placeholder="ej. Broker" /></div>
           <div class="medium"><label for="invFecha">Fecha</label><input id="invFecha" type="date" required /></div>
           <div class="medium"><label for="invRend">Rendimiento estimado %</label><input id="invRend" type="number" step="0.01" /></div>
           <div class="large"><label for="invNotas">Notas</label><textarea id="invNotas"></textarea></div>
-          <div class="large"><button type="submit">Guardar inversión</button></div>
+          <div class="large"><button type="submit">Guardar inversiÃ³n</button></div>
         </form></div>
-        <div class="medium card"><div class="card-head"><h2>Resumen rápido</h2><span class="pill">Cartera</span></div><div class="list">${['FCI','Compra de dólares','CEDEAR','Plazo fijo','Otro'].map((tipo)=>`<div class="list-item"><div><strong>${escapeHTML(tipo)}</strong></div><div><strong>${fmtMoney(data.inversiones.filter((i)=>i.tipo===tipo).reduce((acc,i)=>acc+parseNum(i.monto),0))}</strong></div></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen rÃ¡pido</h2><span class="pill">Cartera</span></div><div class="list">${['FCI','Compra de dÃ³lares','CEDEAR','Plazo fijo','Otro'].map((tipo)=>`<div class="list-item"><div><strong>${escapeHTML(tipo)}</strong></div><div><strong>${fmtMoney(data.inversiones.filter((i)=>i.tipo===tipo).reduce((acc,i)=>acc+parseNum(i.monto),0))}</strong></div></div>`).join('')}</div></div>
         <div class="large card"><div class="card-head"><h2>Listado de inversiones</h2><span class="pill">${data.inversiones.length} registradas</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Activo</th><th>Cuenta</th><th>Monto</th><th>Rend. %</th><th>Notas</th><th></th></tr></thead><tbody>${[...data.inversiones].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((i)=>`<tr><td>${fmtDate(i.fecha)}</td><td>${escapeHTML(i.tipo)}</td><td>${escapeHTML(i.activo)}</td><td>${escapeHTML(i.cuenta||'-')}</td><td>${fmtMoney(parseNum(i.monto))}</td><td>${parseNum(i.rendimiento).toFixed(2)}%</td><td>${escapeHTML(i.notas||'-')}</td><td><button type="button" class="btn-danger" data-del-inv="${i.id}">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin inversiones cargadas.</td></tr>'}</tbody></table></div></div>
       `);
     }
     function renderCuotas(){
-      const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1),grouped={};activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
+      const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0),grouped={};activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
       const forecast=cuotaForecast();
-      const monthItems=activeInstallmentsForMonth(cuotasViewMonth);
+      const suggestedMonth=cuotasManualMonth?cuotasViewMonth:(forecast.find((row)=>row.total>0)?.month||cuotasViewMonth);
+      if(!cuotasManualMonth)cuotasViewMonth=suggestedMonth;
+      const monthItems=activeInstallmentsForMonth(suggestedMonth);
       return sectionTemplate('cuotas',`
         <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(cuotasViewMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(cuotasViewMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · ${item.cuotaNumero}/${item.cuotas} · primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(suggestedMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(suggestedMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Â· ${item.cuotaNumero}/${item.cuotas} Â· primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
-        <div class="large card"><div class="card-head"><h2>Proyección de cuotas futuras</h2><span class="pill">Próximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' · '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
+        <div class="large card"><div class="card-head"><h2>ProyecciÃ³n de cuotas futuras</h2><span class="pill">PrÃ³ximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' Â· '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
       `);
     }
     function renderPlanes(){
-      const order={Alta:0,Media:1,Baja:2},plans=[...data.planes].sort((a,b)=>(order[a.prioridad]??99)-(order[b.prioridad]??99)||String(a.mes||'').localeCompare(String(b.mes||'')));
+      const order={Alta:0,Media:1,Baja:2},plans=[...data.planes].sort((a,b)=>(order[a.prioridad]??99)-(order[b.prioridad]??99)||String(a.mes||'').localeCompare(String(b.mes||''))); 
       return sectionTemplate('planes',`
         <div class="medium card"><div class="card-head"><h2>Nueva compra planeada</h2><span class="pill">Orden por prioridad</span></div><form id="planForm" class="grid"><div class="medium"><label for="planNombre">Nombre</label><input id="planNombre" required /></div><div class="medium"><label for="planCosto">Costo</label><input id="planCosto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="planPrioridad">Prioridad</label><select id="planPrioridad"><option>Alta</option><option>Media</option><option>Baja</option></select></div><div class="medium"><label for="planMes">Mes objetivo</label><input id="planMes" type="month" /></div><div class="large"><label for="planNotas">Notas</label><textarea id="planNotas"></textarea></div><div class="large"><button type="submit">Guardar compra planeada</button></div></form></div>
         <div class="medium card"><div class="card-head"><h2>Prioridades</h2><span class="pill">En foco</span></div><div class="list">${['Alta','Media','Baja'].map((prio)=>`<div class="list-item"><div><strong>${prio}</strong></div><div><strong>${fmtMoney(plans.filter((p)=>p.prioridad===prio).reduce((acc,p)=>acc+parseNum(p.costo),0))}</strong></div></div>`).join('')}</div></div>
@@ -827,47 +821,48 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function renderFondo(){
       const metaTotal=parseNum(data.fondo.basicos)*6,progress=metaTotal?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/metaTotal*100)):0;
-      const cuotasPendientes=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>1).map((m)=>({id:m.id,detalle:m.detalle||m.categoria,pendiente:parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m)}));
+      const cuotasPendientes=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1).map((m)=>({id:m.id,detalle:m.detalle||m.categoria,pendiente:parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m)}));
       return sectionTemplate('fondo',`
-        <div class="medium card"><div class="card-head"><h2>Fondo de emergencia</h2><span class="pill">Meta 6 meses</span></div><form id="fondoForm" class="grid"><div class="medium"><label for="fondoBasicos">Gastos básicos mensuales</label><input id="fondoBasicos" type="number" min="0" step="0.01" value="${parseNum(data.fondo.basicos)}" /></div><div class="medium"><label for="fondoAhorrado">Monto ya ahorrado</label><input id="fondoAhorrado" type="number" min="0" step="0.01" value="${parseNum(data.fondo.ahorrado)}" /></div><div class="large"><button type="submit">Guardar fondo</button></div></form><div class="hint" style="margin-top:12px">Meta ideal: ${fmtMoney(metaTotal)}.</div><div class="progress" style="margin-top:10px"><span style="width:${progress}%"></span></div></div>
-        <div class="medium card"><div class="card-head"><h2>Registrar aporte</h2><span class="pill">Cuenta como salida del mes</span></div><form id="fondoAporteForm" class="grid"><div class="medium"><label for="fondoAporteMonto">Monto</label><input id="fondoAporteMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="fondoAporteFecha">Fecha</label><input id="fondoAporteFecha" type="date" required /></div><div class="large"><label for="fondoAporteDetalle">Detalle</label><input id="fondoAporteDetalle" placeholder="ej. Transferencia al fondo" /></div><div class="large"><button type="submit">Registrar aporte</button></div></form><div class="list" style="margin-top:12px">${(data.fondo.aportes||[]).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((aporte)=>`<div class="list-item"><div><strong>${escapeHTML(aporte.detalle||'Aporte al fondo')}</strong><span>${fmtDate(aporte.fecha)}</span></div><div><strong>${fmtMoney(aporte.monto)}</strong><button type="button" class="btn-danger" data-del-fondo-aporte="${aporte.id}" style="margin-top:8px">Eliminar</button></div></div>`).join('')||'<div class="status ok">Todavía no registraste aportes al fondo.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Fondo de emergencia</h2><span class="pill">Meta 6 meses</span></div><form id="fondoForm" class="grid"><div class="medium"><label for="fondoBasicos">Gastos bÃ¡sicos mensuales</label><input id="fondoBasicos" type="number" min="0" step="0.01" value="${parseNum(data.fondo.basicos)}" /></div><div class="medium"><label for="fondoAhorrado">Monto ya ahorrado</label><input id="fondoAhorrado" type="number" min="0" step="0.01" value="${parseNum(data.fondo.ahorrado)}" /></div><div class="large"><button type="submit">Guardar fondo</button></div></form><div class="hint" style="margin-top:12px">Meta ideal: ${fmtMoney(metaTotal)}.</div><div class="progress" style="margin-top:10px"><span style="width:${progress}%"></span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Registrar aporte</h2><span class="pill">Cuenta como salida del mes</span></div><form id="fondoAporteForm" class="grid"><div class="medium"><label for="fondoAporteMonto">Monto</label><input id="fondoAporteMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="fondoAporteFecha">Fecha</label><input id="fondoAporteFecha" type="date" required /></div><div class="large"><label for="fondoAporteDetalle">Detalle</label><input id="fondoAporteDetalle" placeholder="ej. Transferencia al fondo" /></div><div class="large"><button type="submit">Registrar aporte</button></div></form><div class="list" style="margin-top:12px">${(data.fondo.aportes||[]).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map((aporte)=>`<div class="list-item"><div><strong>${escapeHTML(aporte.detalle||'Aporte al fondo')}</strong><span>${fmtDate(aporte.fecha)}</span></div><div><strong>${fmtMoney(aporte.monto)}</strong><button type="button" class="btn-danger" data-del-fondo-aporte="${aporte.id}" style="margin-top:8px">Eliminar</button></div></div>`).join('')||'<div class="status ok">TodavÃ­a no registraste aportes al fondo.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Cuotas pendientes</h2><span class="pill">Impacto acumulado</span></div><div class="list">${cuotasPendientes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong></div><div><strong>${fmtMoney(item.pendiente)}</strong></div></div>`).join('')||'<div class="status ok">No hay saldos pendientes en cuotas.</div>'}</div></div>
-        <div class="large card"><div class="card-head"><h2>Metas de ahorro</h2><span class="pill">${data.metas.length} activas</span></div><form id="metaForm" class="grid"><div class="medium"><label for="metaNombre">Nombre</label><input id="metaNombre" required /></div><div class="medium"><label for="metaObjetivo">Monto objetivo</label><input id="metaObjetivo" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaActual">Monto actual</label><input id="metaActual" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaFecha">Fecha límite</label><input id="metaFecha" type="date" required /></div><div class="large"><button type="submit">Guardar meta</button></div></form><div class="list" style="margin-top:14px">${data.metas.map((meta)=>{const objetivo=parseNum(meta.objetivo),actual=parseNum(meta.actual),pct=objetivo?Math.min(100,Math.round(actual/objetivo*100)):0;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const monthlyNeed=Math.max(0,objetivo-actual)/months;return`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(meta.nombre)}</strong><div class="hint">${fmtMoney(actual)} de ${fmtMoney(objetivo)} · límite ${fmtDate(meta.fechaLimite)}</div><div class="progress" style="margin-top:10px"><span style="width:${pct}%"></span></div><div class="hint" style="margin-top:8px">Necesitás ahorrar ${fmtMoney(monthlyNeed)} por mes para llegar.</div></div><div><button type="button" class="btn-danger" data-del-meta="${meta.id}">Eliminar</button></div></div>`;}).join('')||'<div class="status ok">Todavía no hay metas creadas.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Metas de ahorro</h2><span class="pill">${data.metas.length} activas</span></div><form id="metaForm" class="grid"><div class="medium"><label for="metaNombre">Nombre</label><input id="metaNombre" required /></div><div class="medium"><label for="metaObjetivo">Monto objetivo</label><input id="metaObjetivo" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaActual">Monto actual</label><input id="metaActual" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaFecha">Fecha lÃ­mite</label><input id="metaFecha" type="date" required /></div><div class="large"><button type="submit">Guardar meta</button></div></form><div class="list" style="margin-top:14px">${data.metas.map((meta)=>{const objetivo=parseNum(meta.objetivo),actual=parseNum(meta.actual),pct=objetivo?Math.min(100,Math.round(actual/objetivo*100)):0;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const monthlyNeed=Math.max(0,objetivo-actual)/months;return`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(meta.nombre)}</strong><div class="hint">${fmtMoney(actual)} de ${fmtMoney(objetivo)} Â· lÃ­mite ${fmtDate(meta.fechaLimite)}</div><div class="progress" style="margin-top:10px"><span style="width:${pct}%"></span></div><div class="hint" style="margin-top:8px">NecesitÃ¡s ahorrar ${fmtMoney(monthlyNeed)} por mes para llegar.</div></div><div><button type="button" class="btn-danger" data-del-meta="${meta.id}">Eliminar</button></div></div>`;}).join('')||'<div class="status ok">TodavÃ­a no hay metas creadas.</div>'}</div></div>
       `);
     }
     function buildCalendarEvents(year,monthIndex){
       const events=[];
-      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} Â· ${m.categoria} Â· ${fmtMoney(parseNum(m.monto))}`});});
-      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`InversiÃ³n Â· ${i.tipo} Â· ${fmtMoney(parseNum(i.monto))}`});});
-      reminderRows().forEach((r)=>{const day=new Date(r.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio Â· ${r.titulo} Â· ${fmtMoney(parseNum(r.monto))}`});});
-      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} Â· ${m.detalle||m.categoria} Â· ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
+      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} Ã‚Â· ${m.categoria} Ã‚Â· ${fmtMoney(parseNum(m.monto))}`});});
+      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`InversiÃƒÂ³n Ã‚Â· ${i.tipo} Ã‚Â· ${fmtMoney(parseNum(i.monto))}`});});
+      reminderRows().forEach((r)=>{const day=new Date(r.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio Ã‚Â· ${r.titulo} Ã‚Â· ${fmtMoney(parseNum(r.monto))}`});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} Ã‚Â· ${m.detalle||m.categoria} Ã‚Â· ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
       return events;
     }
     function renderCalendarioSection(){
       const title=new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'}),rows=reminderRows();
       return sectionTemplate('calendario',`
         <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid">
-          <div class="medium"><label for="remTitulo">TÃ­tulo</label><input id="remTitulo" required placeholder="ej. Tarjeta Visa" /></div>
+          <div class="medium"><label for="remTitulo">TÃƒÂ­tulo</label><input id="remTitulo" required placeholder="ej. Tarjeta Visa" /></div>
           <div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div>
           <div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div>
-          <div class="medium"><label for="remCategoria">CategorÃ­a</label><select id="remCategoria"></select></div>
+          <div class="medium"><label for="remCategoria">CategorÃƒÂ­a</label><select id="remCategoria"></select></div>
           <div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div>
           <div class="large"><button type="submit">Guardar recordatorio</button></div>
         </form></div>
-        <div class="medium card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.notas?` Â· ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span><div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">TodavÃ­a no hay recordatorios cargados.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.notas?` Ã‚Â· ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span><div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">TodavÃƒÂ­a no hay recordatorios cargados.</div>'}</div></div>
         <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="calendar" id="calendarGrid"></div></div>
       `);
     }
     function renderCalendario(){
       const root=$('#calendarGrid');if(!root)return;
-      const now=new Date(),year=now.getFullYear(),monthIndex=now.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],cells=[];
+      const now=new Date(),year=now.getFullYear(),monthIndex=now.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','MiÃ©','Jue','Vie','SÃ¡b','Dom'],cells=[];
       weekDays.forEach((day)=>cells.push(`<div class="cal-head">${day}</div>`));for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
       for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
       root.innerHTML=cells.join('');
     }
     function renderAll(){
-      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderAsistente(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
+      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
       populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();
+      const assistantRoot=$('#assistantMessages');if(assistantRoot)assistantRoot.innerHTML=(data.chat||[]).slice(-8).map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div></div>`).join('')||'<div class="status ok">Todavía no hiciste ninguna consulta.</div>';
     }
     function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria','#remCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
     function convertBlue(source){
@@ -876,7 +871,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const ars=parseNum($('#arsInput')?.value),usd=parseNum($('#usdInput')?.value);
       if(source==='ars'&&ars>0)out.textContent=`${fmtMoney(ars)} equivalen a USD ${(ars/blueState.venta).toFixed(2)} al valor de venta.`;
       else if(source==='usd'&&usd>0)out.textContent=`USD ${usd.toFixed(2)} equivalen a ${fmtMoney(usd*blueState.compra)} al valor de compra.`;
-      else out.textContent='Ingresá un monto para convertir usando dólar blue venta/compra.';
+      else out.textContent='IngresÃ¡ un monto para convertir usando dÃ³lar blue venta/compra.';
     }
     function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
     function chartValueLabel(value){
@@ -900,7 +895,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const width=cssWidth,height=cssHeight;
       ctx.clearRect(0,0,width,height);
       const values=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,8);
-      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavía no hay gastos para graficar este mes.',24,42);return;}
+      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('TodavÃ­a no hay gastos para graficar este mes.',24,42);return;}
       const isMobile=width<=640;
       if(isMobile){
         const max=values[0][1];
@@ -1000,12 +995,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
       document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
       $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
-      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'MÃ©todo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
+      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'MÃƒÂ©todo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
-      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas),parseNum(item.cuotaActual||1)+1);persistAndRender();}));
-      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasViewMonth=event.target.value||currentMonth;renderAll();});
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas)+1,parseNum(item.cuotaActual||1)+1);persistAndRender();}));
+      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
       $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
@@ -1024,27 +1019,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnTestConnection').addEventListener('click',probarConexion);
       $('#btnSaveConfig').addEventListener('click',guardarConfig);
       $('#btnLocalMode').addEventListener('click',modoLocal);
-      $('#btnRelock')?.addEventListener('click',()=>{rememberDevice(false);lockApp('La app se bloqueó. Volvé a ingresar tu contraseña para seguir.');});
-      $('#btnLockLocalOnly')?.addEventListener('click',()=>unlockApp(false));
-      $('#loginForm')?.addEventListener('submit',(event)=>{
-        event.preventDefault();
-        const password=$('#loginPassword')?.value||'';
-        const confirm=$('#loginPasswordConfirm')?.value||'';
-        if(!hasLoginPassword()){
-          if(password.trim().length<4){setLoginStatus('err','Elegí una contraseña de al menos 4 caracteres.');return;}
-          if(password!==confirm){setLoginStatus('err','Las contraseñas no coinciden.');return;}
-          data.auth.passwordHash=hashPassword(password);
-          persistAndRender();
-          unlockApp($('#loginRemember')?.checked);
-          return;
-        }
-        if(hashPassword(password)!==currentPasswordHash()){setLoginStatus('err','La contraseña no coincide con la configurada.');return;}
-        unlockApp($('#loginRemember')?.checked);
-      });
+      $('#btnRelock')?.addEventListener('click',()=>{if(syncMode==='remote')signOutGoogle();else lockApp('Tu sesion local quedo bloqueada.');});
+      $('#btnLockLocalOnly')?.addEventListener('click',()=>unlockApp());
+      $('#loginGoogleBtn')?.addEventListener('click',()=>signInWithGoogle());
       $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
-      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value;data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?parseNum($('#quickCuotas').value||2):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:'Carga rápida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
+      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
       $('#quickModal').addEventListener('click',(event)=>{if(event.target===$('#quickModal'))$('#quickModal').classList.add('hidden');});
+      $('#assistantFab')?.addEventListener('click',()=>$('#assistantModal')?.classList.remove('hidden'));
+      $('#closeAssistantModal')?.addEventListener('click',()=>$('#assistantModal')?.classList.add('hidden'));
+      $('#assistantModal')?.addEventListener('click',(event)=>{if(event.target===$('#assistantModal'))$('#assistantModal').classList.add('hidden');});
+      $('#assistantForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#assistantInput');const text=input?.value.trim();if(!text)return;data.chat=data.chat||[];data.chat.push({id:uid(),role:'user',text});data.chat.push({id:uid(),role:'assistant',text:assistantReply(text)});if(input)input.value='';persistAndRender({localOnly:true});});
     }
     function init(){
       data=loadLocal();
@@ -1057,7 +1042,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
         initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
-      }else{refreshAccessOverlays();sync('warn','Configuración pendiente');}
+      }else{refreshAccessOverlays();sync('warn','ConfiguraciÃ³n pendiente');}
       resetMovimientoForm();
       if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
       if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
@@ -1073,4 +1058,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
 
