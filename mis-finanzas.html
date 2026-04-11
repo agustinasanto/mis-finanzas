@@ -38,7 +38,7 @@
       radial-gradient(circle at 14% 78%,rgba(241,185,211,.22),transparent 24%),
       linear-gradient(180deg,#fff9fc,#ffeef6 50%,#fff5fa);color:var(--text)}
     body{min-height:100vh;position:relative;overflow-x:hidden}
-    body::before,body::after{content:"\273F \2740 \2741";position:fixed;font-size:46px;letter-spacing:18px;color:rgba(231,141,183,.15);pointer-events:none;z-index:0;filter:drop-shadow(0 8px 18px rgba(231,141,183,.08))}
+    body::before,body::after{content:"✿ ❀ ❁";position:fixed;font-size:46px;letter-spacing:18px;color:rgba(231,141,183,.15);pointer-events:none;z-index:0;filter:drop-shadow(0 8px 18px rgba(231,141,183,.08))}
     body::before{top:22px;left:18px;animation:floatBloom 11s ease-in-out infinite}
     body::after{right:22px;bottom:18px;animation:floatBloom 13s ease-in-out infinite reverse}
     button,input,select,textarea{font:inherit;color:inherit}
@@ -309,17 +309,21 @@ alter publication supabase_realtime add table public.mf_states;</div>
     DEF.fondo.aportes=[];
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
-    const CP1252_ENCODE={
-      '€':0x80,'‚':0x82,'ƒ':0x83,'„':0x84,'…':0x85,'†':0x86,'‡':0x87,'ˆ':0x88,'‰':0x89,'Š':0x8A,'‹':0x8B,'Œ':0x8C,'Ž':0x8E,
-      '‘':0x91,'’':0x92,'“':0x93,'”':0x94,'•':0x95,'–':0x96,'—':0x97,'˜':0x98,'™':0x99,'š':0x9A,'›':0x9B,'œ':0x9C,'ž':0x9E,'Ÿ':0x9F
-    };
+    function cp1252Byte(cp){
+      const map={
+        8364:0x80,8218:0x82,402:0x83,8222:0x84,8230:0x85,8224:0x86,8225:0x87,710:0x88,8240:0x89,352:0x8A,8249:0x8B,338:0x8C,381:0x8E,
+        8216:0x91,8217:0x92,8220:0x93,8221:0x94,8226:0x95,8211:0x96,8212:0x97,732:0x98,8482:0x99,353:0x9A,8250:0x9B,339:0x9C,382:0x9E,376:0x9F
+      };
+      return map[cp]??63;
+    }
     function encodeWindows1252(value){
-      return new Uint8Array(Array.from(String(value??'')).map((ch)=>{const cp=ch.codePointAt(0);if(cp<=255)return cp;return CP1252_ENCODE[ch]??63;}));
+      return new Uint8Array(Array.from(String(value??'')).map((ch)=>{const cp=ch.codePointAt(0);if(cp<=255)return cp;return cp1252Byte(cp);}));
     }
     function repairMojibakeString(value){
       let next=String(value??'');
+      const looksBroken=(text)=>/[\u00C2\u00C3\u00E2]/.test(text)||text.includes('\u0153')||text.includes('\u20AC')||text.includes('\u201A')||text.includes('\u201E')||text.includes('\u2026')||text.includes('\u2018')||text.includes('\u2019');
       for(let i=0;i<4;i++){
-        if(!/[ÂÃÅâƒŒœŠšŸ€]/.test(next))break;
+        if(!looksBroken(next))break;
         try{
           const decoded=new TextDecoder('utf-8').decode(encodeWindows1252(next));
           if(!decoded||decoded===next)break;
