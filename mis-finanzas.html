@@ -272,19 +272,25 @@ alter publication supabase_realtime add table public.mf_states;</div>
     DEF.fondo.aportes=[];
     let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
-    const MOJIBAKE_FIXES=[['ÃƒÆ’Ã‚Â¡','Ã¡'],['ÃƒÆ’Ã‚Â©','Ã©'],['ÃƒÆ’Ã‚Â­','Ã­'],['ÃƒÆ’Ã‚Â³','Ã³'],['ÃƒÆ’Ã‚Âº','Ãº'],['ÃƒÆ’Ã‚Â±','Ã±'],['ÃƒÆ’Ã‚Â','Ã'],['ÃƒÆ’Ã‚â€°','Ã‰'],['ÃƒÆ’Ã‚Â','Ã'],['ÃƒÆ’Ã‚â€œ','Ã“'],['ÃƒÆ’Ã‚Å¡','Ãš'],['ÃƒÆ’Ã‚â€˜','Ã‘'],['Ãƒâ€šÃ‚Â°','Â°'],['Ãƒâ€šÃ‚Â·','Â·'],['Ãƒâ€šÃ‚Âº','Âº'],['Ãƒâ€šÃ‚Â»','Â»'],['Ãƒâ€šÃ‚Â«','Â«'],['ÃƒÂ¡','Ã¡'],['ÃƒÂ©','Ã©'],['ÃƒÂ­','Ã­'],['ÃƒÂ³','Ã³'],['ÃƒÂº','Ãº'],['ÃƒÂ±','Ã±'],['ÃƒÂ','Ã'],['Ãƒâ€°','Ã‰'],['ÃƒÂ','Ã'],['Ãƒâ€œ','Ã“'],['ÃƒÅ¡','Ãš'],['Ãƒâ€˜','Ã‘'],['Ã‚Â·','Â·'],['Ã‚Â°','Â°'],['Ã‚Âº','Âº'],['Ã‚Â»','Â»'],['Ã‚Â«','Â«'],['Ã¢â€ â€™','â†’'],['Ã¢Å“Â¿','âœ¿'],['Ã¢Ââ‚¬','â€'],['Ã¢ÂÂ','â'],['Ã¢â‚¬Â¦','â€¦']];
-    const fmtMoney=(n)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
-    const fmtDate=(v)=>{if(!v)return'Sin fecha';const d=new Date(v+'T00:00:00');return Number.isNaN(d.getTime())?v:d.toLocaleDateString('es-AR');};
-    const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
-    const sanitize=(v)=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-    const parseNum=(v)=>Number(v||0);
-    const monthKey=(value)=>{const d=value?new Date(value+'T00:00:00'):new Date();return d.toISOString().slice(0,7);};
-    const currentMonth=monthKey();
-    let data=clone(DEF),activeTab='inicio',saveTimer=null,sbClient=null,sbChannel=null,sbPoller=null,lastRemoteStamp='',activeCode='',skipRemote=false,syncMode='local',liveConfig=loadConfig(),cuotasViewMonth=currentMonth,isUnlocked=false,authUser=null,authUnsub=null,cuotasManualMonth=false;
-    const addMonths=(base,offset)=>{const [y,m]=base.split('-').map(Number);return new Date(y,m-1+offset,1).toISOString().slice(0,7);};
-    const monthLabel=(key)=>{const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});};
-    const escapeHTML=(str)=>String(str??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    function repairMojibakeString(value){let next=String(value??'');MOJIBAKE_FIXES.forEach(([from,to])=>{next=next.split(from).join(to);});return next;}
+    const CP1252_ENCODE={
+      '€':0x80,'‚':0x82,'ƒ':0x83,'„':0x84,'…':0x85,'†':0x86,'‡':0x87,'ˆ':0x88,'‰':0x89,'Š':0x8A,'‹':0x8B,'Œ':0x8C,'Ž':0x8E,
+      '‘':0x91,'’':0x92,'“':0x93,'”':0x94,'•':0x95,'–':0x96,'—':0x97,'˜':0x98,'™':0x99,'š':0x9A,'›':0x9B,'œ':0x9C,'ž':0x9E,'Ÿ':0x9F
+    };
+    function encodeWindows1252(value){
+      return new Uint8Array(Array.from(String(value??'')).map((ch)=>{const cp=ch.codePointAt(0);if(cp<=255)return cp;return CP1252_ENCODE[ch]??63;}));
+    }
+    function repairMojibakeString(value){
+      let next=String(value??'');
+      for(let i=0;i<4;i++){
+        if(!/[ÂÃÅâƒŒœŠšŸ€]/.test(next))break;
+        try{
+          const decoded=new TextDecoder('utf-8').decode(encodeWindows1252(next));
+          if(!decoded||decoded===next)break;
+          next=decoded;
+        }catch(err){break;}
+      }
+      return next;
+    }
     function repairMojibake(root=document.body){
       if(!root)return;
       const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
@@ -671,7 +677,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
             <div class="list-item"><div><strong>Ya saliÃƒÂ³ este mes</strong><span>Gastos reales + inversiones + fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
           </div>
         </div>
-        <div class="large card"><div class="card-head"><h2>Gastos por categorÃƒÂ­a</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En tel?fono pod?s desplazar este bloque para ver todas las categor?as completas.</div></div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categorÃƒÂ­a</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En tel&#233;fono pod&#233;s desplazar este bloque para ver todas las categor&#237;as completas.</div></div></div>
         <div class="medium card"><div class="card-head"><h2>PrÃƒÂ³ximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Ã‚Â· cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` Ã‚Â· ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenÃƒÂ©s vencimientos cargados por ahora.</div>'}</div></div>
         <div class="medium card">
@@ -931,7 +937,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       ctx.scale(dpr,dpr);
       const width=cssWidth,height=cssHeight;
       ctx.clearRect(0,0,width,height);
-      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todavia no hay gastos para graficar este mes.',24,42);return;}
+      if(!values.length){ctx.fillStyle='#90707f';ctx.font='16px Segoe UI';ctx.fillText('Todav?a no hay gastos para graficar este mes.',24,42);return;}
       if(isMobile){
         const max=values[0][1]||1;
         const leftPad=16,rightPad=14,topPad=18,bottomPad=18;
