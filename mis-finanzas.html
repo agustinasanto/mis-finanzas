@@ -434,7 +434,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
-    function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=text;}
+    function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=repairMojibakeString(text);}
     function unlockApp(){
       isUnlocked=true;
       $('#loginOverlay')?.classList.add('hidden');
@@ -457,8 +457,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(syncMode==='local'||authUser)unlockApp();
       else lockApp();
     }
-    function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=text;}
-    function sync(type,text){const el=$('#syncState');el.textContent=text;el.dataset.state=type;}
+    function setStatus(type,text){const el=$('#cfgStatus');el.className='status '+type;el.textContent=repairMojibakeString(text);}
+    function sync(type,text){const el=$('#syncState');el.textContent=repairMojibakeString(text);el.dataset.state=type;}
     function normalizeDbUrl(url){
       const value=String(url||'').trim();
       if(!/^https:\/\/[a-z0-9.-]+\/?$/i.test(value))throw new Error('invalid-url');
