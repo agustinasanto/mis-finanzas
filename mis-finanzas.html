@@ -114,6 +114,38 @@
     .overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(255,245,250,.68);backdrop-filter:blur(8px)}
     .overlay.hidden{display:none}
     .overlay-card{width:min(760px,100%);max-height:calc(100vh - 36px);overflow:auto;padding:24px;background:linear-gradient(180deg,rgba(255,255,255,.99),rgba(255,246,251,.96));border:1px solid rgba(255,255,255,.82);border-radius:30px;box-shadow:0 24px 60px rgba(95,70,84,.12)}
+    .login-shell{position:relative;overflow:hidden;background:
+      radial-gradient(circle at 12% 12%,rgba(255,255,255,.98),transparent 22%),
+      radial-gradient(circle at 86% 14%,rgba(247,209,227,.55),transparent 24%),
+      linear-gradient(180deg,rgba(255,255,255,.99),rgba(255,244,249,.98))}
+    .login-shell::before,.login-shell::after{content:"";position:absolute;border-radius:999px;pointer-events:none;z-index:0}
+    .login-shell::before{width:180px;height:180px;top:-54px;right:-34px;background:radial-gradient(circle,rgba(247,209,227,.55),transparent 70%)}
+    .login-shell::after{width:220px;height:220px;left:-88px;bottom:-86px;background:radial-gradient(circle,rgba(241,185,211,.35),transparent 72%)}
+    .login-wrap{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:18px;align-items:stretch}
+    .login-hero{position:relative;padding:26px;border-radius:28px;border:1px solid rgba(241,216,228,.9);background:
+      linear-gradient(145deg,rgba(255,255,255,.98),rgba(255,241,247,.95));
+      box-shadow:var(--glow)}
+    .login-hero::before{content:"✿";position:absolute;top:18px;right:18px;width:54px;height:54px;display:grid;place-items:center;border-radius:18px;background:linear-gradient(135deg,rgba(247,209,227,.7),rgba(255,255,255,.96));color:#b85b88;font-size:1.35rem;box-shadow:0 10px 24px rgba(231,141,183,.16)}
+    .login-overline{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,240,246,.95);border:1px solid var(--line);color:#9d6b81;font-size:.84rem;letter-spacing:.02em;text-transform:uppercase}
+    .login-title{margin:16px 0 8px;font-size:2.1rem;line-height:1.05;letter-spacing:-.03em;color:#5b4250}
+    .login-copy{margin:0;color:var(--muted);font-size:1.04rem;max-width:38ch}
+    .login-ribbon{margin-top:18px;padding:14px 16px;border-radius:22px;background:linear-gradient(135deg,rgba(255,241,247,.98),rgba(255,248,252,.96));border:1px solid rgba(241,216,228,.95);display:flex;gap:12px;align-items:flex-start}
+    .login-ribbon-mark{width:38px;height:38px;flex:0 0 38px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#f8d7e7,#fff);color:#be6f96;box-shadow:0 8px 18px rgba(231,141,183,.14)}
+    .login-ribbon strong{display:block;margin-bottom:4px}
+    .login-bullets{display:grid;gap:10px;margin-top:18px}
+    .login-bullet{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(241,216,228,.88)}
+    .login-bullet-dot{width:28px;height:28px;flex:0 0 28px;border-radius:999px;display:grid;place-items:center;background:linear-gradient(135deg,#f7d1e3,#fff);color:#b85b88;font-size:.88rem}
+    .login-panel{display:flex;flex-direction:column;justify-content:space-between;padding:22px;border-radius:28px;border:1px solid rgba(241,216,228,.95);background:linear-gradient(180deg,rgba(255,252,254,.98),rgba(255,241,247,.94));box-shadow:var(--glow)}
+    .login-panel-top{display:grid;gap:14px}
+    .login-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.86);border:1px solid var(--line);color:#9d6b81;font-size:.84rem;align-self:flex-start}
+    .login-panel h3{margin:0;font-size:1.2rem}
+    .login-panel p{margin:0;color:var(--muted)}
+    .login-status-card{padding:14px;border-radius:20px;background:rgba(255,255,255,.74);border:1px solid rgba(241,216,228,.9)}
+    .login-cta{display:grid;gap:12px;margin-top:18px}
+    .login-google-btn{display:flex;align-items:center;justify-content:center;gap:12px;padding:15px 18px;font-weight:700;font-size:1rem;border-radius:22px;background:linear-gradient(135deg,#f4bfd8,#e78db7);color:#6a3f55;box-shadow:0 18px 28px rgba(231,141,183,.22)}
+    .login-google-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.9);color:#db6a9a;font-weight:800;box-shadow:0 6px 14px rgba(231,141,183,.14)}
+    .login-subtle{background:linear-gradient(180deg,rgba(255,250,252,.95),rgba(255,243,248,.95));border:1px solid var(--line);box-shadow:none}
+    .login-foot{margin-top:12px;font-size:.84rem;color:#9a7b88;text-align:center}
     .setup-steps{margin:16px 0;padding-left:18px;color:var(--muted)}
     .setup-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
     .calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
@@ -155,6 +187,10 @@
       .card,.overlay-card,.modal-card{border-radius:24px;padding:16px}
       .setup-actions{flex-direction:column}
       .setup-actions button{width:100%}
+      .login-wrap{grid-template-columns:1fr}
+      .login-title{font-size:1.78rem}
+      .login-hero,.login-panel{padding:18px}
+      .login-google-btn,.login-subtle{width:100%}
       .list-item{padding:11px 12px}
       table{font-size:.9rem}
       canvas{height:220px}
@@ -407,6 +443,49 @@ alter publication supabase_realtime add table public.mf_states;</div>
       while((node=walker.nextNode())){node.nodeValue=repairMojibakeString(node.nodeValue);}
       root.querySelectorAll('[placeholder],[title],[aria-label]').forEach((el)=>{['placeholder','title','aria-label'].forEach((attr)=>{if(el.hasAttribute(attr))el.setAttribute(attr,repairMojibakeString(el.getAttribute(attr)));});});
       document.title=repairMojibakeString(document.title);
+    }
+    function enhanceLoginOverlay(){
+      const card=$('#loginOverlay .overlay-card');
+      if(!card)return;
+      card.classList.add('login-shell');
+      card.innerHTML=`
+        <div class="login-wrap">
+          <section class="login-hero">
+            <span class="login-overline">Acceso privado · planner mode</span>
+            <h2 class="login-title">Entr&aacute; a tu rinc&oacute;n financiero</h2>
+            <p class="login-copy">Tu espacio para ver gastos, cuotas, ahorro e inversiones con una entrada m&aacute;s linda, m&aacute;s suave y mucho m&aacute;s tuya.</p>
+            <div class="login-ribbon">
+              <div class="login-ribbon-mark">&#10047;</div>
+              <div>
+                <strong>Todo sincronizado</strong>
+                <span class="muted">Si Google ya est&aacute; habilitado en Supabase Auth, entr&aacute; con un toque y segu&iacute;s donde te quedaste.</span>
+              </div>
+            </div>
+            <div class="login-bullets">
+              <div class="login-bullet"><span class="login-bullet-dot">&#9825;</span><span>Saldo, cuotas y metas en el mismo lugar.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#10022;</span><span>Una entrada m&aacute;s clara, m&aacute;s linda y sin vueltas t&eacute;cnicas.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#9729;</span><span>Lista para usar la app en compu y tel&eacute;fono sin perder contexto.</span></div>
+            </div>
+          </section>
+          <section class="login-panel">
+            <div class="login-panel-top">
+              <span class="login-badge">Acceso con Google</span>
+              <h3>Entr&aacute; en un toque</h3>
+              <p>Us&aacute; tu cuenta de Google para desbloquear la app y mantener la sincronizaci&oacute;n entre dispositivos.</p>
+              <div class="login-status-card">
+                <div id="loginStatus" class="status">Entr&aacute; con Google para desbloquear la app.</div>
+              </div>
+            </div>
+            <div class="login-cta">
+              <button type="button" id="loginGoogleBtn" class="login-google-btn">
+                <span class="login-google-mark">G</span>
+                <span>Acceder con Google</span>
+              </button>
+              <button type="button" class="btn-soft login-subtle" id="btnLockLocalOnly">Seguir sin bloquear</button>
+              <div class="login-foot">Si Google todav&iacute;a no est&aacute; habilitado en Supabase Auth, este bot&oacute;n te lo avisa enseguida.</div>
+            </div>
+          </section>
+        </div>`;
     }
     function clone(v){return JSON.parse(JSON.stringify(v));}
     function mergeWithDefaults(raw){
@@ -1193,6 +1272,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       liveConfig=loadConfig();
       saveConfig(liveConfig);
       data=loadLocal();
+      enhanceLoginOverlay();
       createTabs();
       repairMojibake(document.body);
       renderAll();
