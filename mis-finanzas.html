@@ -302,13 +302,81 @@ alter publication supabase_realtime add table public.mf_states;</div>
 
   <script>
     const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
+    const EMBEDDED_CONFIG={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
     DEF.fondo.aportes=[];
-    let blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},chartAnimationFrame=null;
+    let data=clone(DEF),
+        liveConfig=null,
+        syncMode='local',
+        sbClient=null,
+        sbChannel=null,
+        sbPoller=null,
+        activeCode='',
+        lastRemoteStamp='',
+        saveTimer=null,
+        skipRemote=false,
+        authUnsub=null,
+        authUser=null,
+        isUnlocked=false,
+        activeTab='inicio',
+        currentMonth=new Date().toISOString().slice(0,7),
+        cuotasViewMonth=currentMonth,
+        cuotasManualMonth=false,
+        calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1),
+        blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},
+        chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
+    function parseNum(value){
+      if(typeof value==='number')return Number.isFinite(value)?value:0;
+      let text=String(value??'').trim();
+      if(!text)return 0;
+      text=text.replace(/\s+/g,'');
+      if(text.includes(',')&&text.includes('.')){
+        text=text.lastIndexOf(',')>text.lastIndexOf('.')?text.replace(/\./g,'').replace(',','.'):text.replace(/,/g,'');
+      }else if(text.includes(',')){
+        text=text.replace(/\./g,'').replace(',','.');
+      }
+      const num=Number(text);
+      return Number.isFinite(num)?num:0;
+    }
+    function fmtMoney(value){
+      return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(parseNum(value)||0);
+    }
+    function monthKey(value){
+      const raw=String(value||'').trim();
+      if(/^\d{4}-\d{2}$/.test(raw))return raw;
+      const date=raw?new Date(raw):new Date();
+      if(Number.isNaN(date.getTime()))return new Date().toISOString().slice(0,7);
+      return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+    }
+    function addMonths(month,offset){
+      const [year,mon]=monthKey(month).split('-').map(Number);
+      const date=new Date(year,mon-1+offset,1);
+      return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+    }
+    function monthLabel(month){
+      const [year,mon]=monthKey(month).split('-').map(Number);
+      return new Date(year,mon-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+    }
+    function fmtDate(value){
+      const raw=String(value||'').trim();
+      if(!raw)return '-';
+      const date=/^\d{4}-\d{2}$/.test(raw)?new Date(`${raw}-01T00:00:00`):new Date(`${raw}T00:00:00`);
+      if(Number.isNaN(date.getTime()))return raw;
+      return date.toLocaleDateString('es-AR');
+    }
+    function uid(){
+      return `mf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+    }
+    function escapeHTML(value){
+      return String(value??'').replace(/[&<>"']/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    }
+    function sanitize(value){
+      return String(value??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    }
     function cp1252Byte(cp){
       const map={
         8364:0x80,8218:0x82,402:0x83,8222:0x84,8230:0x85,8224:0x86,8225:0x87,710:0x88,8240:0x89,352:0x8A,8249:0x8B,338:0x8C,381:0x8E,
@@ -362,13 +430,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
     function loadConfig(){
-      const embedded={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
-      try{
-        const stored=JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');
-        return stored&&stored.url&&stored.key&&stored.code?stored:embedded;
-      }catch(err){
-        return embedded;
-      }
+      return {...EMBEDDED_CONFIG};
     }
     function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
@@ -1128,6 +1190,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#assistantForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#assistantInput');const text=input?.value.trim();if(!text)return;data.chat=data.chat||[];data.chat.push({id:uid(),role:'user',text});data.chat.push({id:uid(),role:'assistant',text:assistantReply(text)});if(input)input.value='';persistAndRender({localOnly:true});});
     }
     function init(){
+      liveConfig=loadConfig();
+      saveConfig(liveConfig);
       data=loadLocal();
       createTabs();
       repairMojibake(document.body);
@@ -1136,8 +1200,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
       registerServiceWorker();
       fetchBlueRate();
       if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
+        syncMode='remote';
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
-        initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);$('#setupOverlay').classList.remove('hidden');setStatus('err',info.text);});
+        initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);setStatus('err',info.text);$('#setupOverlay')?.classList.add('hidden');lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Probá entrar con Google de nuevo en unos segundos.':'La conexión con Supabase ya está cargada. Probá entrar con Google y, si sigue fallando, ajustamos Supabase Auth.');});
       }else{refreshAccessOverlays();sync('warn','ConfiguraciÃ³n pendiente');}
       resetMovimientoForm();
       if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
