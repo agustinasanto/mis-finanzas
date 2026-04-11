@@ -567,6 +567,29 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const {error}=await sbClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.href}});
       if(error)setLoginStatus('err','No pudimos iniciar sesión con Google. Revisá que el proveedor esté habilitado en Supabase Auth.');
     }
+    async function beginGoogleLogin(){
+      if(!sbClient){setLoginStatus('err','Primero necesitás una conexión válida con Supabase.');return;}
+      setLoginStatus('warn','Preparando acceso con Google...');
+      const {data,error}=await sbClient.auth.signInWithOAuth({
+        provider:'google',
+        options:{redirectTo:window.location.href,skipBrowserRedirect:true}
+      });
+      if(error){
+        const msg=String(error.message||error.code||error);
+        if(/provider is not enabled|unsupported provider/i.test(msg)){
+          setLoginStatus('err','Google todavía no está habilitado en Supabase Auth. Falta activarlo y cargar el Client ID y Client Secret de Google.');
+          return;
+        }
+        setLoginStatus('err','No pudimos iniciar sesión con Google. Revisá Supabase Auth y la configuración de redirección.');
+        return;
+      }
+      if(data?.url){
+        setLoginStatus('warn','Redirigiendo a Google...');
+        window.location.assign(data.url);
+        return;
+      }
+      setLoginStatus('err','No recibimos una URL de acceso desde Supabase. Revisá la configuración de Google Auth.');
+    }
     async function signOutGoogle(){
       if(sbClient){try{await sbClient.auth.signOut();}catch(err){}}
       authUser=null;
@@ -1258,7 +1281,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnLocalMode').addEventListener('click',modoLocal);
       $('#btnRelock')?.addEventListener('click',()=>{if(syncMode==='remote')signOutGoogle();else lockApp('Tu sesion local quedo bloqueada.');});
       $('#btnLockLocalOnly')?.addEventListener('click',()=>unlockApp());
-      $('#loginGoogleBtn')?.addEventListener('click',()=>signInWithGoogle());
+      $('#loginGoogleBtn')?.addEventListener('click',()=>beginGoogleLogin());
       $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
       $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
