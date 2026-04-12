@@ -337,7 +337,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
   </div>
 
   <script>
-    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue';
+    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue',SESSION_KEY='mf_unlock_v1',REMEMBER_KEY='mf_unlock_remember_v1';
     const EMBEDDED_CONFIG={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
@@ -412,6 +412,42 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function sanitize(value){
       return String(value??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    }
+    function randomSalt(){
+      const bytes=new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes,(b)=>b.toString(16).padStart(2,'0')).join('');
+    }
+    function bytesToHex(buffer){
+      return Array.from(new Uint8Array(buffer),(b)=>b.toString(16).padStart(2,'0')).join('');
+    }
+    async function hashCredential(username,password,salt){
+      const payload=`${String(username||'').trim().toLowerCase()}::${String(password||'')}::${String(salt||'')}`;
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
+      return bytesToHex(digest);
+    }
+    function hasConfiguredCredentials(){
+      return Boolean(data?.auth?.username&&data?.auth?.passwordHash&&data?.auth?.salt);
+    }
+    function readSavedAccess(){
+      const raw=sessionStorage.getItem(SESSION_KEY)||localStorage.getItem(REMEMBER_KEY);
+      if(!raw)return null;
+      try{return JSON.parse(raw);}catch(err){return null;}
+    }
+    function clearSavedAccess(){
+      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(REMEMBER_KEY);
+    }
+    function saveAccessSession(username,remember){
+      const payload=JSON.stringify({code:liveConfig?.code||'',username:String(username||'')});
+      sessionStorage.setItem(SESSION_KEY,payload);
+      if(remember)localStorage.setItem(REMEMBER_KEY,payload);
+      else localStorage.removeItem(REMEMBER_KEY);
+    }
+    function hasValidSavedAccess(){
+      const saved=readSavedAccess();
+      if(!saved||!hasConfiguredCredentials())return false;
+      return saved.code===(liveConfig?.code||'')&&saved.username===data.auth.username;
     }
     function cp1252Byte(cp){
       const map={
@@ -497,7 +533,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.planes=Array.isArray(src.planes)?src.planes:[];
       next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
       next.chat=Array.isArray(src.chat)?src.chat:[];
-      next.auth=src.auth&&typeof src.auth==='object'?{passwordHash:String(src.auth.passwordHash||'')}:{passwordHash:''};
+      next.auth=src.auth&&typeof src.auth==='object'?{
+        username:String(src.auth.username||''),
+        passwordHash:String(src.auth.passwordHash||''),
+        salt:String(src.auth.salt||'')
+      }:{username:'',passwordHash:'',salt:''};
       next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
@@ -594,6 +634,138 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(sbClient){try{await sbClient.auth.signOut();}catch(err){}}
       authUser=null;
       lockApp('Tu sesión se cerró. Volvé a entrar con Google para seguir.');
+    }
+    function enhanceLoginOverlay(){
+      const card=$('#loginOverlay .overlay-card');
+      if(!card)return;
+      card.classList.add('login-shell');
+      card.innerHTML=`
+        <div class="login-wrap">
+          <section class="login-hero">
+            <span class="login-overline">Acceso privado · planner mode</span>
+            <h2 class="login-title" id="loginTitle">Entr&aacute; a tu rinc&oacute;n financiero</h2>
+            <p class="login-copy" id="loginCopy">Tu espacio para ver gastos, cuotas, ahorro e inversiones con una entrada m&aacute;s linda, m&aacute;s suave y mucho m&aacute;s tuya.</p>
+            <div class="login-ribbon">
+              <div class="login-ribbon-mark">&#10047;</div>
+              <div>
+                <strong id="loginRibbonTitle">Tu acceso queda sincronizado</strong>
+                <span class="muted" id="loginRibbonCopy">Cre&aacute; tu usuario y contrase&ntilde;a una sola vez y despu&eacute;s us&aacute; la misma entrada en cualquier dispositivo.</span>
+              </div>
+            </div>
+            <div class="login-bullets">
+              <div class="login-bullet"><span class="login-bullet-dot">&#9825;</span><span>Saldo, cuotas y metas en el mismo lugar.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#10022;</span><span>Una entrada m&aacute;s clara, m&aacute;s linda y sin vueltas raras.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#9729;</span><span>Lista para usar la app en compu y tel&eacute;fono sin perder contexto.</span></div>
+            </div>
+          </section>
+          <section class="login-panel">
+            <div class="login-panel-top">
+              <span class="login-badge" id="loginBadge">Usuario y contrase&ntilde;a</span>
+              <h3 id="loginPanelTitle">Entr&aacute; con tus datos</h3>
+              <p id="loginPanelCopy">Configur&aacute; un acceso simple para desbloquear la app y mantener tus datos protegidos.</p>
+              <div class="login-status-card">
+                <div id="loginStatus" class="status">Ingres&aacute; con tu usuario y contrase&ntilde;a para desbloquear la app.</div>
+              </div>
+            </div>
+            <form id="loginForm" class="login-cta">
+              <div>
+                <label for="loginUsername">Usuario</label>
+                <input id="loginUsername" autocomplete="username" placeholder="ej. agustina" />
+              </div>
+              <div>
+                <label for="loginPassword">Contrase&ntilde;a</label>
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Tu contrase&ntilde;a" />
+              </div>
+              <div id="loginConfirmWrap">
+                <label for="loginConfirm">Repetir contrase&ntilde;a</label>
+                <input id="loginConfirm" type="password" autocomplete="new-password" placeholder="Repetila para confirmar" />
+              </div>
+              <label class="login-bullet" style="margin-top:2px">
+                <input id="loginRemember" type="checkbox" style="width:auto" />
+                <span>Recordar este dispositivo</span>
+              </label>
+              <button type="submit" id="loginSubmitBtn" class="login-google-btn">
+                <span class="login-google-mark">✿</span>
+                <span>Crear acceso</span>
+              </button>
+              <div class="login-foot" id="loginFoot">La primera vez vas a crear tu usuario y contrase&ntilde;a. Despu&eacute;s vas a entrar siempre con esos datos.</div>
+            </form>
+          </section>
+        </div>`;
+    }
+    function syncLoginPanel(){
+      const setup=!hasConfiguredCredentials();
+      const title=$('#loginTitle'),copy=$('#loginCopy'),ribbonTitle=$('#loginRibbonTitle'),ribbonCopy=$('#loginRibbonCopy'),badge=$('#loginBadge'),panelTitle=$('#loginPanelTitle'),panelCopy=$('#loginPanelCopy'),confirmWrap=$('#loginConfirmWrap'),submitBtn=$('#loginSubmitBtn'),foot=$('#loginFoot'),username=$('#loginUsername'),remember=$('#loginRemember');
+      if(!title||!submitBtn)return;
+      title.innerHTML=setup?'Cre&aacute; tu acceso privado':'Volv&eacute; a entrar a Mis Finanzas';
+      copy.textContent=setup?'Definí tu usuario y tu contraseña para cuidar tus datos sin depender de proveedores externos.':'Usá el usuario y la contraseña que creaste para volver a entrar a tu app.';
+      ribbonTitle.textContent=setup?'Tu acceso queda sincronizado':'Tus datos siguen protegidos';
+      ribbonCopy.textContent=setup?'Creá tu usuario y contraseña una sola vez y después usá la misma entrada en cualquier dispositivo.':'Si entrás desde otro dispositivo, usá exactamente el mismo usuario y contraseña que configuraste al principio.';
+      badge.innerHTML=setup?'Crear acceso':'Iniciar sesi&oacute;n';
+      panelTitle.innerHTML=setup?'Eleg&iacute; tu usuario y contrase&ntilde;a':'Ingres&aacute; con tus datos';
+      panelCopy.textContent=setup?'Esta cuenta queda dentro de tu app y te sirve para bloquear el acceso de forma simple.':'Desbloqueá la app con el acceso que ya configuraste.';
+      confirmWrap.style.display=setup?'':'none';
+      submitBtn.lastElementChild.textContent=setup?'Crear acceso':'Ingresar';
+      foot.textContent=setup?'La primera vez vas a crear tu usuario y contraseña. Después vas a entrar siempre con esos datos.':'Podés marcar este dispositivo para no tener que volver a ingresar cada vez.';
+      if(username&&!username.value)username.value=setup?'':(readSavedAccess()?.username||data.auth.username||'');
+      if(remember)remember.checked=Boolean(localStorage.getItem(REMEMBER_KEY));
+    }
+    function unlockApp(message='Acceso concedido.'){
+      isUnlocked=true;
+      $('#loginOverlay')?.classList.add('hidden');
+      setLoginStatus('ok',message);
+    }
+    function lockApp(message='Ingresá con tu usuario y contraseña para desbloquear la app.'){
+      isUnlocked=false;
+      syncLoginPanel();
+      setLoginStatus('warn',message);
+      if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
+    }
+    function refreshAccessOverlays(){
+      const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
+      if(needsSetup){
+        $('#setupOverlay')?.classList.remove('hidden');
+        $('#loginOverlay')?.classList.add('hidden');
+        isUnlocked=false;
+        clearSavedAccess();
+        return;
+      }
+      $('#setupOverlay')?.classList.add('hidden');
+      syncLoginPanel();
+      if(!hasConfiguredCredentials()){lockApp('Creá tu usuario y contraseña para empezar.');return;}
+      if(hasValidSavedAccess())unlockApp('Acceso recordado en este dispositivo.');
+      else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
+    }
+    async function handleLoginSubmit(event){
+      event.preventDefault();
+      const username=String($('#loginUsername')?.value||'').trim().toLowerCase();
+      const password=String($('#loginPassword')?.value||'');
+      const confirm=String($('#loginConfirm')?.value||'');
+      const remember=Boolean($('#loginRemember')?.checked);
+      if(!username||!password){setLoginStatus('err','Completá usuario y contraseña para continuar.');return;}
+      if(!hasConfiguredCredentials()){
+        if(password.length<4){setLoginStatus('err','Elegí una contraseña de al menos 4 caracteres.');return;}
+        if(password!==confirm){setLoginStatus('err','Las contraseñas no coinciden.');return;}
+        const salt=randomSalt();
+        const passwordHash=await hashCredential(username,password,salt);
+        data.auth={username,passwordHash,salt};
+        saveAccessSession(username,remember);
+        unlockApp('Acceso creado. Ya podés usar la app.');
+        persistAndRender();
+        $('#loginForm')?.reset();
+        syncLoginPanel();
+        return;
+      }
+      if(username!==String(data.auth.username||'').trim().toLowerCase()){setLoginStatus('err','Ese usuario no coincide con el acceso configurado en esta app.');return;}
+      const passwordHash=await hashCredential(username,password,data.auth.salt);
+      if(passwordHash!==data.auth.passwordHash){setLoginStatus('err','La contraseña no coincide. Probá de nuevo.');return;}
+      saveAccessSession(username,remember);
+      unlockApp('Sesión iniciada.');
+      $('#loginForm')?.reset();
+      syncLoginPanel();
+    }
+    function bindAccessEvents(){
+      $('#loginForm')?.addEventListener('submit',handleLoginSubmit);
     }
     function classifySupabaseError(error){
       const message=String(error&&(error.message||error.code)||''),lower=message.toLowerCase();
@@ -1082,7 +1254,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function renderAll(){
       $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderInversiones(),renderCuotas(),renderPlanes(),renderFondo(),renderCalendarioSection()].join('');
-      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();
+      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();syncLoginPanel();
       const assistantRoot=$('#assistantMessages');if(assistantRoot)assistantRoot.innerHTML=(data.chat||[]).slice(-8).map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div></div>`).join('')||'<div class="status ok">Todavía no hiciste ninguna consulta.</div>';
     }
     function populateCategorySelects(){const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');['#movCategoria','#quickCategoria','#remCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});}
@@ -1279,9 +1451,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnTestConnection').addEventListener('click',probarConexion);
       $('#btnSaveConfig').addEventListener('click',guardarConfig);
       $('#btnLocalMode').addEventListener('click',modoLocal);
-      $('#btnRelock')?.addEventListener('click',()=>{if(syncMode==='remote')signOutGoogle();else lockApp('Tu sesion local quedo bloqueada.');});
-      $('#btnLockLocalOnly')?.addEventListener('click',()=>unlockApp());
-      $('#loginGoogleBtn')?.addEventListener('click',()=>beginGoogleLogin());
+      $('#btnRelock')?.addEventListener('click',()=>{clearSavedAccess();lockApp('Sesión bloqueada. Ingresá con tu usuario y contraseña.');});
       $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
       $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
@@ -1300,6 +1470,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       repairMojibake(document.body);
       renderAll();
       initStaticEvents();
+      bindAccessEvents();
+      syncLoginPanel();
       registerServiceWorker();
       fetchBlueRate();
       if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
