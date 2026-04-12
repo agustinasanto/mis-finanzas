@@ -38,7 +38,7 @@
       radial-gradient(circle at 14% 78%,rgba(241,185,211,.22),transparent 24%),
       linear-gradient(180deg,#fff9fc,#ffeef6 50%,#fff5fa);color:var(--text)}
     body{min-height:100vh;position:relative;overflow-x:hidden}
-    body.overlay-lock{overflow:hidden;touch-action:none}
+    body.overlay-lock{overflow:hidden;overscroll-behavior:none}
     body::before,body::after{content:"✿ ❀ ❁";position:fixed;font-size:46px;letter-spacing:18px;color:rgba(231,141,183,.15);pointer-events:none;z-index:0;filter:drop-shadow(0 8px 18px rgba(231,141,183,.08))}
     body::before{top:22px;left:18px;animation:floatBloom 11s ease-in-out infinite}
     body::after{right:22px;bottom:18px;animation:floatBloom 13s ease-in-out infinite reverse}
