@@ -38,6 +38,7 @@
       radial-gradient(circle at 14% 78%,rgba(241,185,211,.22),transparent 24%),
       linear-gradient(180deg,#fff9fc,#ffeef6 50%,#fff5fa);color:var(--text)}
     body{min-height:100vh;position:relative;overflow-x:hidden}
+    body.overlay-lock{overflow:hidden;touch-action:none}
     body::before,body::after{content:"✿ ❀ ❁";position:fixed;font-size:46px;letter-spacing:18px;color:rgba(231,141,183,.15);pointer-events:none;z-index:0;filter:drop-shadow(0 8px 18px rgba(231,141,183,.08))}
     body::before{top:22px;left:18px;animation:floatBloom 11s ease-in-out infinite}
     body::after{right:22px;bottom:18px;animation:floatBloom 13s ease-in-out infinite reverse}
@@ -111,9 +112,9 @@
     .section.active .grid>*:nth-child(7){animation-delay:.26s}
     .section.active .grid>*:nth-child(8){animation-delay:.3s}
     .section.active .grid>*:nth-child(9){animation-delay:.34s}
-    .overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(255,245,250,.68);backdrop-filter:blur(8px)}
+    .overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:rgba(255,245,250,.68);backdrop-filter:blur(8px)}
     .overlay.hidden{display:none}
-    .overlay-card{width:min(760px,100%);max-height:calc(100vh - 36px);overflow:auto;padding:24px;background:linear-gradient(180deg,rgba(255,255,255,.99),rgba(255,246,251,.96));border:1px solid rgba(255,255,255,.82);border-radius:30px;box-shadow:0 24px 60px rgba(95,70,84,.12)}
+    .overlay-card{width:min(760px,100%);max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:24px;background:linear-gradient(180deg,rgba(255,255,255,.99),rgba(255,246,251,.96));border:1px solid rgba(255,255,255,.82);border-radius:30px;box-shadow:0 24px 60px rgba(95,70,84,.12)}
     .login-shell{position:relative;overflow:hidden;background:
       radial-gradient(circle at 12% 12%,rgba(255,255,255,.98),transparent 22%),
       radial-gradient(circle at 86% 14%,rgba(247,209,227,.55),transparent 24%),
@@ -184,7 +185,9 @@
       .tabs{flex-wrap:nowrap;overflow:auto;padding-bottom:2px;scrollbar-width:none;width:100%}
       .tabs::-webkit-scrollbar{display:none}
       .tab-btn{flex:0 0 auto;white-space:nowrap}
+      .overlay{align-items:flex-start;justify-content:center;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px))}
       .card,.overlay-card,.modal-card{border-radius:24px;padding:16px}
+      .overlay-card{width:100%;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px)}
       .setup-actions{flex-direction:column}
       .setup-actions button{width:100%}
       .login-wrap{grid-template-columns:1fr}
@@ -937,6 +940,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       isUnlocked=true;
       $('#setupOverlay')?.classList.add('hidden');
       $('#loginOverlay')?.classList.add('hidden');
+      syncOverlayScrollLock();
       persistAndRender({localOnly:true});
     }
     async function initRealtimeSync(){
@@ -1588,6 +1592,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(protocol!=='https:'&&window.location.hostname!=='localhost'&&window.location.hostname!=='127.0.0.1')return;
       window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});},{once:true});
     }
+    function syncOverlayScrollLock(){
+      const blocking=Boolean(!$('#setupOverlay')?.classList.contains('hidden')||!$('#loginOverlay')?.classList.contains('hidden'));
+      document.body.classList.toggle('overlay-lock',blocking);
+    }
     function enhanceLoginOverlay(){
       const card=$('#loginOverlay .overlay-card');
       if(!card)return;
@@ -1685,11 +1693,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(remember)remember.checked=Boolean(localStorage.getItem(REMEMBER_KEY));
       syncBiometricUI();
     }
+    function unlockApp(message='Acceso concedido.'){
+      isUnlocked=true;
+      $('#loginOverlay')?.classList.add('hidden');
+      setLoginStatus('ok',message);
+      syncOverlayScrollLock();
+    }
     function lockApp(message='Ingresá con tu usuario y contraseña para desbloquear la app.'){
       isUnlocked=false;
       syncLoginPanel();
       setLoginStatus('warn',message);
       if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
+      syncOverlayScrollLock();
     }
     function refreshAccessOverlays(){
       const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
@@ -1698,6 +1713,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         $('#loginOverlay')?.classList.add('hidden');
         isUnlocked=false;
         clearSavedAccess();
+        syncOverlayScrollLock();
         return;
       }
       $('#setupOverlay')?.classList.add('hidden');
@@ -1705,6 +1721,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!hasConfiguredCredentials()){lockApp('Creá tu usuario y contraseña para empezar.');return;}
       if(hasValidSavedAccess())unlockApp('Acceso recordado en este dispositivo.');
       else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
+      syncOverlayScrollLock();
     }
     async function handleLoginSubmit(event){
       event.preventDefault();
@@ -1824,6 +1841,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       resetMovimientoForm();
       if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
       if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
+      syncOverlayScrollLock();
     }
     window.addEventListener('beforeunload',()=>destroySupabaseClient());
     init();
