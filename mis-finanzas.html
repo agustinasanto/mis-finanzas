@@ -339,6 +339,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
   <script>
     const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue',SESSION_KEY='mf_unlock_v1',REMEMBER_KEY='mf_unlock_remember_v1';
     const EMBEDDED_CONFIG={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
+    const PRESET_ACCESS={username:'agustinasanto13@gmail.com',salt:'8fd4c3a1c6be4f779e6d2b1a0f5c9a73',passwordHash:'628d94afea4879539138c6e902d7c8b4d810adae65ca3306ca09bbc1b3c87c1a'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
@@ -426,8 +427,101 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
       return bytesToHex(digest);
     }
+    let biometricCapabilityChecked=false,biometricCapabilityAvailable=false;
     function hasConfiguredCredentials(){
       return Boolean(data?.auth?.username&&data?.auth?.passwordHash&&data?.auth?.salt);
+    }
+    function hasBiometricCredential(){
+      return Boolean(data?.auth?.biometric?.credentialId);
+    }
+    function ensurePresetAccess(){
+      if(!data||typeof data!=='object')return false;
+      const auth=data.auth&&typeof data.auth==='object'?data.auth:{};
+      const biometric=auth.biometric&&typeof auth.biometric==='object'?auth.biometric:null;
+      const changed=auth.username!==PRESET_ACCESS.username||auth.salt!==PRESET_ACCESS.salt||auth.passwordHash!==PRESET_ACCESS.passwordHash;
+      if(!changed)return false;
+      data.auth={username:PRESET_ACCESS.username,passwordHash:PRESET_ACCESS.passwordHash,salt:PRESET_ACCESS.salt,biometric};
+      clearSavedAccess();
+      return true;
+    }
+    function randomBytes(len){
+      const bytes=new Uint8Array(len);
+      crypto.getRandomValues(bytes);
+      return bytes;
+    }
+    function toBase64Url(bytes){
+      const binary=Array.from(bytes,(b)=>String.fromCharCode(b)).join('');
+      return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    }
+    function fromBase64Url(value){
+      const normalized=String(value||'').replace(/-/g,'+').replace(/_/g,'/');
+      const padded=normalized+'==='.slice((normalized.length+3)%4);
+      const binary=atob(padded);
+      return Uint8Array.from(binary,(char)=>char.charCodeAt(0));
+    }
+    function supportsBiometricAccess(){
+      return Boolean(window.isSecureContext&&window.PublicKeyCredential&&navigator.credentials?.create&&navigator.credentials?.get);
+    }
+    async function detectBiometricAvailability(){
+      biometricCapabilityChecked=true;
+      biometricCapabilityAvailable=supportsBiometricAccess();
+      if(!biometricCapabilityAvailable){syncBiometricUI();return false;}
+      if(typeof window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable==='function'){
+        try{biometricCapabilityAvailable=await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}
+        catch(err){biometricCapabilityAvailable=true;}
+      }
+      syncBiometricUI();
+      return biometricCapabilityAvailable;
+    }
+    function describeBiometricError(error,phase='login'){
+      const name=String(error?.name||''),message=String(error?.message||'');
+      if(name==='NotAllowedError')return phase==='create'?'La app se desbloqueo, pero la biometria no se activo porque cancelaste el permiso del telefono.':'Se cancelo la validacion biometrica. Proba otra vez o entra con tu contrasena.';
+      if(name==='InvalidStateError')return 'Ese dispositivo ya tiene una credencial biometrica registrada para esta app.';
+      if(name==='NotSupportedError'||name==='SecurityError')return 'Este navegador no pudo usar la biometria del dispositivo para la app web.';
+      if(name==='AbortError')return 'La verificacion biometrica se interrumpio antes de completarse.';
+      if(/platform|uvpaa|biometric-unavailable/i.test(message))return 'No encontramos biometria web disponible en este dispositivo.';
+      return phase==='create'?'No pudimos activar la biometria ahora. Podes seguir entrando con tu contrasena.':'No pudimos validar la biometria. Entra con tu contrasena y lo revisamos.';
+    }
+    async function registerBiometricCredential(username){
+      if(!biometricCapabilityAvailable)throw new Error('biometric-unavailable');
+      const displayName=String(username||PRESET_ACCESS.username||'Mis Finanzas');
+      const credential=await navigator.credentials.create({publicKey:{
+        challenge:randomBytes(32),
+        rp:{name:'Mis Finanzas'},
+        user:{id:randomBytes(32),name:displayName,displayName},
+        pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+        authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'preferred',userVerification:'required'},
+        timeout:60000,
+        attestation:'none'
+      }});
+      if(!credential?.rawId)throw new Error('biometric-create-failed');
+      return toBase64Url(new Uint8Array(credential.rawId));
+    }
+    async function enableBiometricForCurrentDevice(username){
+      const credentialId=await registerBiometricCredential(username);
+      data.auth={...data.auth,biometric:{credentialId,registeredAt:new Date().toISOString(),device:'platform'}};
+      return credentialId;
+    }
+    async function signInWithBiometric(){
+      if(!hasBiometricCredential()){setLoginStatus('warn','Primero entra con tu usuario y contrasena para activar la biometria en este dispositivo.');return;}
+      if(!biometricCapabilityAvailable){setLoginStatus('warn','Este dispositivo no tiene biometria web disponible para esta app.');return;}
+      try{
+        setLoginStatus('warn','Esperando tu huella o el desbloqueo del telefono...');
+        const assertion=await navigator.credentials.get({publicKey:{
+          challenge:randomBytes(32),
+          allowCredentials:[{type:'public-key',id:fromBase64Url(data.auth.biometric.credentialId)}],
+          userVerification:'required',
+          timeout:60000
+        }});
+        const receivedId=assertion?.rawId?toBase64Url(new Uint8Array(assertion.rawId)):'';
+        if(!receivedId||receivedId!==data.auth.biometric.credentialId)throw new Error('biometric-mismatch');
+        saveAccessSession(data.auth.username,Boolean($('#loginRemember')?.checked));
+        $('#loginForm')?.reset();
+        unlockApp('Desbloqueo biometrico listo.');
+        syncLoginPanel();
+      }catch(error){
+        setLoginStatus('err',describeBiometricError(error,'login'));
+      }
     }
     function readSavedAccess(){
       const raw=sessionStorage.getItem(SESSION_KEY)||localStorage.getItem(REMEMBER_KEY);
@@ -536,8 +630,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       next.auth=src.auth&&typeof src.auth==='object'?{
         username:String(src.auth.username||''),
         passwordHash:String(src.auth.passwordHash||''),
-        salt:String(src.auth.salt||'')
-      }:{username:'',passwordHash:'',salt:''};
+        salt:String(src.auth.salt||''),
+        biometric:src.auth.biometric&&typeof src.auth.biometric==='object'?{
+          credentialId:String(src.auth.biometric.credentialId||''),
+          registeredAt:String(src.auth.biometric.registeredAt||''),
+          device:String(src.auth.biometric.device||'platform')
+        }:null
+      }:{username:'',passwordHash:'',salt:'',biometric:null};
       next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
@@ -1488,6 +1587,243 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const protocol=window.location.protocol;
       if(protocol!=='https:'&&window.location.hostname!=='localhost'&&window.location.hostname!=='127.0.0.1')return;
       window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});},{once:true});
+    }
+    function enhanceLoginOverlay(){
+      const card=$('#loginOverlay .overlay-card');
+      if(!card)return;
+      card.classList.add('login-shell');
+      card.innerHTML=`
+        <div class="login-wrap">
+          <section class="login-hero">
+            <span class="login-overline">Acceso privado · planner mode</span>
+            <h2 class="login-title" id="loginTitle">Volvé a entrar a Mis Finanzas</h2>
+            <p class="login-copy" id="loginCopy">Tu espacio para ver gastos, cuotas, ahorro e inversiones con una entrada más linda, más suave y mucho más tuya.</p>
+            <div class="login-ribbon">
+              <div class="login-ribbon-mark">&#10047;</div>
+              <div>
+                <strong id="loginRibbonTitle">Tu acceso queda sincronizado</strong>
+                <span class="muted" id="loginRibbonCopy">Vas a entrar con tu mail y tu contraseña, y si el dispositivo lo permite también vas a poder sumar biometría.</span>
+              </div>
+            </div>
+            <div class="login-bullets">
+              <div class="login-bullet"><span class="login-bullet-dot">&#9825;</span><span>Saldo, cuotas y metas en el mismo lugar.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#10022;</span><span>Un acceso más claro, más lindo y sin vueltas raras.</span></div>
+              <div class="login-bullet"><span class="login-bullet-dot">&#9729;</span><span>Lista para usar la app en compu y teléfono sin perder contexto.</span></div>
+            </div>
+          </section>
+          <section class="login-panel">
+            <div class="login-panel-top">
+              <span class="login-badge" id="loginBadge">Acceso personal</span>
+              <h3 id="loginPanelTitle">Entrá con tus datos</h3>
+              <p id="loginPanelCopy">Usá tu mail y tu contraseña para desbloquear la app. Si tu teléfono lo permite, después también vas a poder entrar con biometría.</p>
+              <div class="login-status-card">
+                <div id="loginStatus" class="status">Ingresá con tu usuario y contraseña para desbloquear la app.</div>
+              </div>
+            </div>
+            <form id="loginForm" class="login-cta">
+              <div>
+                <label for="loginUsername">Usuario</label>
+                <input id="loginUsername" autocomplete="username" placeholder="ej. agustinasanto13@gmail.com" />
+              </div>
+              <div>
+                <label for="loginPassword">Contraseña</label>
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
+              </div>
+              <div id="loginConfirmWrap">
+                <label for="loginConfirm">Repetir contraseña</label>
+                <input id="loginConfirm" type="password" autocomplete="new-password" placeholder="Repetila para confirmar" />
+              </div>
+              <label class="login-bullet" style="margin-top:2px">
+                <input id="loginRemember" type="checkbox" style="width:auto" />
+                <span>Recordar este dispositivo</span>
+              </label>
+              <div class="login-status-card" id="biometricCard">
+                <strong id="biometricTitle">Biometría del dispositivo</strong>
+                <p class="muted" id="biometricCopy" style="margin-top:6px">Si tu teléfono o tu compu lo permiten, vas a poder desbloquear con huella, Face ID o PIN del sistema.</p>
+                <button type="button" class="btn-soft" id="biometricBtn">Entrar con biometría</button>
+              </div>
+              <button type="submit" id="loginSubmitBtn" class="login-google-btn">
+                <span class="login-google-mark">✿</span>
+                <span>Ingresar</span>
+              </button>
+              <div class="login-foot" id="loginFoot">Tu acceso ya queda configurado con tu mail. Si aceptás el prompt del teléfono una vez, también vas a poder usar biometría.</div>
+            </form>
+          </section>
+        </div>`;
+    }
+    function syncBiometricUI(){
+      const card=$('#biometricCard'),button=$('#biometricBtn'),copy=$('#biometricCopy'),title=$('#biometricTitle');
+      if(!card||!button||!copy||!title)return;
+      const available=biometricCapabilityAvailable&&supportsBiometricAccess();
+      const enabled=hasBiometricCredential();
+      card.style.display=available||enabled?'':'none';
+      button.style.display=available&&enabled?'':'none';
+      button.disabled=!available||!enabled;
+      title.textContent=enabled?'Biometría lista':'Biometría del dispositivo';
+      if(enabled)copy.textContent='Este dispositivo ya tiene un acceso biométrico registrado para esta app. Podés usarlo para entrar con un toque.';
+      else if(available)copy.textContent='Después de tu primer ingreso con contraseña, la app te va a ofrecer registrar tu huella o la biometría del sistema.';
+      else copy.textContent='Este navegador no expone biometría web para la app. Seguí entrando con tu contraseña.';
+    }
+    function syncLoginPanel(){
+      const setup=!hasConfiguredCredentials();
+      const title=$('#loginTitle'),copy=$('#loginCopy'),ribbonTitle=$('#loginRibbonTitle'),ribbonCopy=$('#loginRibbonCopy'),badge=$('#loginBadge'),panelTitle=$('#loginPanelTitle'),panelCopy=$('#loginPanelCopy'),confirmWrap=$('#loginConfirmWrap'),submitBtn=$('#loginSubmitBtn'),foot=$('#loginFoot'),username=$('#loginUsername'),remember=$('#loginRemember');
+      if(!title||!submitBtn)return;
+      title.innerHTML=setup?'Creá tu acceso privado':'Volvé a entrar a Mis Finanzas';
+      copy.textContent=setup?'Definí tu usuario y tu contraseña para cuidar tus datos sin depender de proveedores externos.':'Usá tu mail y tu contraseña para volver a entrar a tu app.';
+      ribbonTitle.textContent=setup?'Tu acceso queda sincronizado':'Tus datos siguen protegidos';
+      ribbonCopy.textContent=setup?'Creá tu usuario y contraseña una sola vez y después usá la misma entrada en cualquier dispositivo.':'Tu usuario principal queda fijado como agustinasanto13@gmail.com y podés sumar biometría en este dispositivo.';
+      badge.innerHTML=setup?'Crear acceso':'Iniciar sesión';
+      panelTitle.innerHTML=setup?'Elegí tu usuario y contraseña':'Ingresá con tus datos';
+      panelCopy.textContent=setup?'Esta cuenta queda dentro de tu app y te sirve para bloquear el acceso de forma simple.':'Desbloqueá la app con el acceso que ya configuraste.';
+      confirmWrap.style.display=setup?'':'none';
+      submitBtn.lastElementChild.textContent=setup?'Crear acceso':'Ingresar';
+      foot.textContent=setup?'La primera vez vas a crear tu usuario y contraseña. Después vas a entrar siempre con esos datos.':'Podés marcar este dispositivo para no volver a escribir tus datos cada vez.';
+      if(username){
+        username.value=setup?'':(readSavedAccess()?.username||data.auth.username||PRESET_ACCESS.username);
+        username.readOnly=!setup;
+      }
+      if(remember)remember.checked=Boolean(localStorage.getItem(REMEMBER_KEY));
+      syncBiometricUI();
+    }
+    function lockApp(message='Ingresá con tu usuario y contraseña para desbloquear la app.'){
+      isUnlocked=false;
+      syncLoginPanel();
+      setLoginStatus('warn',message);
+      if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
+    }
+    function refreshAccessOverlays(){
+      const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
+      if(needsSetup){
+        $('#setupOverlay')?.classList.remove('hidden');
+        $('#loginOverlay')?.classList.add('hidden');
+        isUnlocked=false;
+        clearSavedAccess();
+        return;
+      }
+      $('#setupOverlay')?.classList.add('hidden');
+      syncLoginPanel();
+      if(!hasConfiguredCredentials()){lockApp('Creá tu usuario y contraseña para empezar.');return;}
+      if(hasValidSavedAccess())unlockApp('Acceso recordado en este dispositivo.');
+      else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
+    }
+    async function handleLoginSubmit(event){
+      event.preventDefault();
+      if(!biometricCapabilityChecked)await detectBiometricAvailability();
+      const username=String($('#loginUsername')?.value||'').trim().toLowerCase();
+      const password=String($('#loginPassword')?.value||'');
+      const confirm=String($('#loginConfirm')?.value||'');
+      const remember=Boolean($('#loginRemember')?.checked);
+      let authChanged=false,biometricEnabled=false;
+      if(!username||!password){setLoginStatus('err','Completá usuario y contraseña para continuar.');return;}
+      if(!hasConfiguredCredentials()){
+        if(password.length<4){setLoginStatus('err','Elegí una contraseña de al menos 4 caracteres.');return;}
+        if(password!==confirm){setLoginStatus('err','Las contraseñas no coinciden.');return;}
+        const salt=randomSalt();
+        const passwordHash=await hashCredential(username,password,salt);
+        data.auth={...data.auth,username,passwordHash,salt};
+        authChanged=true;
+      }
+      if(username!==String(data.auth.username||'').trim().toLowerCase()){setLoginStatus('err','Ese usuario no coincide con el acceso configurado en esta app.');return;}
+      const passwordHash=await hashCredential(username,password,data.auth.salt);
+      if(passwordHash!==data.auth.passwordHash){setLoginStatus('err','La contraseña no coincide. Probá de nuevo.');return;}
+      if(!hasBiometricCredential()&&biometricCapabilityAvailable){
+        try{
+          await enableBiometricForCurrentDevice(username);
+          biometricEnabled=true;
+          authChanged=true;
+        }catch(error){
+          setLoginStatus('warn',describeBiometricError(error,'create'));
+        }
+      }
+      saveAccessSession(username,remember);
+      unlockApp(biometricEnabled?'Sesión iniciada y biometría activada en este dispositivo.':'Sesión iniciada.');
+      $('#loginForm')?.reset();
+      syncLoginPanel();
+      if(authChanged)persistAndRender();
+    }
+    function bindAccessEvents(){
+      $('#loginForm')?.addEventListener('submit',handleLoginSubmit);
+      $('#biometricBtn')?.addEventListener('click',async()=>{if(!biometricCapabilityChecked)await detectBiometricAvailability();signInWithBiometric();});
+    }
+    async function initRealtimeSync(){
+      if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
+      const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
+      syncMode='remote';sync('warn','Sincronizando con Supabase...');
+      const remote=await readRemoteRow(client,safeCode);
+      if(remote&&remote.payload){
+        data=mergeWithDefaults(remote.payload);
+        const presetChanged=ensurePresetAccess();
+        lastRemoteStamp=remote.updated_at||'';
+        saveLocal();
+        if(presetChanged)await writeRemoteRow(client,safeCode,data);
+      }else{
+        ensurePresetAccess();
+        await writeRemoteRow(client,safeCode,data);
+      }
+      sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{
+        if(skipRemote){skipRemote=false;return;}
+        if(payload.new&&payload.new.payload){
+          lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;
+          data=mergeWithDefaults(payload.new.payload);
+          const presetChanged=ensurePresetAccess();
+          saveLocal();
+          renderAll();
+          refreshAccessOverlays();
+          sync('ok','Cambios recibidos desde Supabase');
+          if(presetChanged)queueRemoteSave();
+        }
+      }).subscribe();
+      sbPoller=setInterval(async()=>{
+        try{
+          const row=await readRemoteRow(client,safeCode);
+          if(row&&row.updated_at&&row.updated_at!==lastRemoteStamp&&!skipRemote){
+            lastRemoteStamp=row.updated_at;
+            data=mergeWithDefaults(row.payload||{});
+            const presetChanged=ensurePresetAccess();
+            saveLocal();
+            renderAll();
+            refreshAccessOverlays();
+            sync('ok','Cambios actualizados');
+            if(presetChanged)queueRemoteSave();
+          }
+        }catch(error){}
+      },15000);
+      sync('ok','Sincronización activa');
+      renderAll();
+      refreshAccessOverlays();
+    }
+    function init(){
+      liveConfig=loadConfig();
+      saveConfig(liveConfig);
+      data=loadLocal();
+      ensurePresetAccess();
+      enhanceLoginOverlay();
+      createTabs();
+      repairMojibake(document.body);
+      renderAll();
+      initStaticEvents();
+      bindAccessEvents();
+      syncLoginPanel();
+      detectBiometricAvailability().catch(()=>{});
+      registerServiceWorker();
+      fetchBlueRate();
+      if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
+        syncMode='remote';
+        $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
+        initRealtimeSync().catch((error)=>{
+          const info=classifySupabaseError(error);
+          sync('err',info.text);
+          setStatus('err',info.text);
+          $('#setupOverlay')?.classList.add('hidden');
+          lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Probá de nuevo en unos segundos.':'La conexión con Supabase ya está cargada. Entrá con tu usuario y tu contraseña para seguir.');
+        });
+      }else{
+        refreshAccessOverlays();
+        sync('warn','Configuración pendiente');
+      }
+      resetMovimientoForm();
+      if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
+      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
     }
     window.addEventListener('beforeunload',()=>destroySupabaseClient());
     init();
