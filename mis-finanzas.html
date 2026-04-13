@@ -1075,12 +1075,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const margenDiario=diasRestantes?cierreEstimado/diasRestantes:0;
       const comprometidoPct=metrics.ingresosMes?Math.round(comprometidoTotal/metrics.ingresosMes*100):0;
       const libreReal=Math.max(0,metrics.ingresosMes-gastoFijoProyectado-inversionesMes-aportesFondoMes-recordatoriosMes);
+      const pendienteEstimado=Math.max(0,comprometidoTotal-yaComprometido);
       let estado='ok',mensaje='Vas cerrando el mes con margen.';
       if(metrics.ingresosMes===0){estado='warn';mensaje='TodavÃƒÂ­a no hay ingresos cargados para proyectar el cierre del mes.';}
       else if(cierreEstimado<0){estado='err';mensaje='Si seguÃƒÂ­s asÃƒÂ­ y ademÃƒÂ¡s concretÃƒÂ¡s lo planeado, cerrarÃƒÂ­as el mes en negativo.';}
       else if(comprometidoPct>=85){estado='warn';mensaje='El mes viene bastante comprometido. Conviene cuidar gastos variables nuevos.';}
       else if(gastosVariables>0&&gastoVariablePace>gastoVariableProyectado*1.1){estado='warn';mensaje='El gasto variable viene acelerado y te puede comer margen antes de cerrar el mes.';}
-      return{...metrics,inversionesMes,aportesFondoMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
+      return{...metrics,inversionesMes,aportesFondoMes,planesMes,recordatoriosMes,gastosFijos,gastosVariables,gastoFijoProyectado,gastoVariableProyectado,gastoProyectado,diasRestantes,yaComprometido,comprometidoTotal,pendienteEstimado,cierreEstimado,margenHoy,margenDiario,comprometidoPct,libreReal,estado,mensaje};
     }
     function deriveMetodoMensual(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
@@ -1776,6 +1777,66 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function bindAccessEvents(){
       $('#loginForm')?.addEventListener('submit',handleLoginSubmit);
       $('#biometricBtn')?.addEventListener('click',async()=>{if(!biometricCapabilityChecked)await detectBiometricAvailability();signInWithBiometric();});
+    }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      if(text.includes('fin de mes')||text.includes('llego')){
+        return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      }
+      if(text.includes('cuota')||text.includes('tarjeta')){
+        return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si queres revisar otro mes, cambialo en la pestana Cuotas.`;
+      }
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria')){
+        return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
+      }
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
+        return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoria Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+      }
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos y ahorro. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
+    }
+    function renderInicio(){
+      const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection(),reminders=reminderRows(6);
+      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.egresosMes)} salidas totales</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Mas ${fmtMoney(metrics.inversionesMes+metrics.aportesFondoMes)} entre inversion y fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automaticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Ultimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
+        <div class="large card">
+          <div class="card-head"><h2>Panorama del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
+          <div class="hint" style="margin-top:10px">Una lectura simple de como venis: cuanto ingreso cargaste, cuanto ya salio, cuanto todavia podria salir y con cuanto cerrarias el mes.</div>
+          <div class="inline-fields" style="margin-top:12px">
+            <div class="list-item"><div><strong>Ingreso del mes</strong><span>Lo que cargaste como ingreso</span></div><div><strong>${fmtMoney(projection.ingresosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Ya salio</strong><span>Gastos reales, inversiones y fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
+            <div class="list-item"><div><strong>Falta salir</strong><span>Resto del mes, planes y recordatorios</span></div><div><strong>${fmtMoney(pendingProjection)}</strong></div></div>
+            <div class="list-item"><div><strong>Como cerrarias hoy</strong><span>${projection.diasRestantes} dias para cerrar el mes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
+          </div>
+          <div class="list" style="margin-top:12px">
+            <div class="list-item"><div><strong>Ingreso comprometido</strong><span>Parte del ingreso ya tomada por el mes</span></div><div><strong>${projection.comprometidoPct}%</strong></div></div>
+            <div class="list-item"><div><strong>Margen para decidir</strong><span>Lo mas libre que te queda hoy</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong></div></div>
+          </div>
+        </div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Proximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="medium card">
+          <div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div>
+          <div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div>
+          <div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div>
+          <div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresa un monto para convertir usando dolar blue venta/compra.':'No disponible'}</div></div>
+        </div>
+        <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
     }
     async function initRealtimeSync(){
       if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
