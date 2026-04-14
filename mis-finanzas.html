@@ -332,7 +332,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <button type="button" class="btn-soft" id="closeAssistantModal">Cerrar</button>
       </div>
       <form id="assistantForm" class="grid">
-        <div class="large"><label for="assistantInput">Tu consulta</label><textarea id="assistantInput" placeholder="ej. Â¿Llego bien a fin de mes o me estoy pasando con los variables?"></textarea></div>
+        <div class="large"><label for="assistantInput">Tu consulta</label><textarea id="assistantInput" placeholder="ej. ¿me conviene invertir hoy?, ¿cómo está el mercado del día?, ¿llego bien a fin de mes?"></textarea></div>
         <div class="large"><button type="submit">Preguntar</button></div>
       </form>
       <div class="list" id="assistantMessages" style="margin-top:14px"></div>
@@ -355,7 +355,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
   </div>
 
   <script>
-    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue',SESSION_KEY='mf_unlock_v1',REMEMBER_KEY='mf_unlock_remember_v1';
+    const STORAGE_KEY='mf_local_v1',CONFIG_KEY='mf_cfg_v1',BLUE_URL='https://dolarapi.com/v1/dolares/blue',MARKET_URL='https://dolarapi.com/v1/dolares',SESSION_KEY='mf_unlock_v1',REMEMBER_KEY='mf_unlock_remember_v1';
     const EMBEDDED_CONFIG={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
     const PRESET_ACCESS={username:'agustinasanto13@gmail.com',salt:'8fd4c3a1c6be4f779e6d2b1a0f5c9a73',passwordHash:'628d94afea4879539138c6e902d7c8b4d810adae65ca3306ca09bbc1b3c87c1a'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
@@ -382,6 +382,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         cuotasManualMonth=false,
         calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1),
         blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},
+        marketState={status:'idle',quotes:{},updatedAt:'',fetchedAt:null},
         chartAnimationFrame=null;
     const $=(s)=>document.querySelector(s);
     function parseNum(value){
@@ -1130,8 +1131,33 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return alerts;
     }
     async function fetchBlueRate(){
-      try{blueState.status='loading';const res=await fetch(BLUE_URL,{cache:'no-store'});if(!res.ok)throw new Error('api-failed');const json=await res.json();blueState={status:'ok',compra:Number(json.compra||0),venta:Number(json.venta||0),fecha:json.fechaActualizacion||'',fetchedAt:new Date().toISOString()};}
-      catch(err){blueState={status:'error',compra:null,venta:null,fecha:'',fetchedAt:null};}
+      try{
+        blueState.status='loading';
+        marketState.status='loading';
+        const res=await fetch(MARKET_URL,{cache:'no-store'});
+        if(!res.ok)throw new Error('api-failed');
+        const rows=await res.json();
+        const quotes={};
+        (Array.isArray(rows)?rows:[]).forEach((item)=>{
+          const key=String(item.casa||item.nombre||'').toLowerCase().replace(/\s+/g,'_');
+          if(!key)return;
+          quotes[key]={
+            casa:String(item.casa||''),
+            nombre:String(item.nombre||item.casa||''),
+            compra:Number(item.compra||0),
+            venta:Number(item.venta||0),
+            fecha:String(item.fechaActualizacion||'')
+          };
+        });
+        const blue=quotes.blue||null;
+        if(!blue)throw new Error('missing-blue');
+        blueState={status:'ok',compra:Number(blue.compra||0),venta:Number(blue.venta||0),fecha:blue.fecha||'',fetchedAt:new Date().toISOString()};
+        marketState={status:'ok',quotes,updatedAt:blue.fecha||Object.values(quotes)[0]?.fecha||'',fetchedAt:new Date().toISOString()};
+      }
+      catch(err){
+        blueState={status:'error',compra:null,venta:null,fecha:'',fetchedAt:null};
+        marketState={status:'error',quotes:{},updatedAt:'',fetchedAt:null};
+      }
       if(activeTab==='inicio')renderAll();
     }
     function createTabs(){
@@ -1883,6 +1909,77 @@ alter publication supabase_realtime add table public.mf_states;</div>
         </div>
         <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
       `);
+    }
+    function getMarketQuote(keys){
+      if(marketState.status!=='ok')return null;
+      const list=Array.isArray(keys)?keys:[keys];
+      for(const key of list){
+        const found=marketState.quotes[String(key||'').toLowerCase()];
+        if(found)return found;
+      }
+      return null;
+    }
+    function deriveMarketAdvice(){
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const fondoObjetivo3m=parseNum(data.fondo.basicos)*3;
+      const fondoCubierto=fondoObjetivo3m>0?parseNum(data.fondo.ahorrado)>=fondoObjetivo3m:parseNum(data.fondo.ahorrado)>0;
+      const blue=getMarketQuote('blue');
+      const mep=getMarketQuote(['bolsa','mep']);
+      const oficial=getMarketQuote('oficial');
+      const cripto=getMarketQuote('cripto');
+      const lines=[];
+      const quotes=[];
+      if(oficial?.venta)quotes.push(`oficial ${fmtMoney(oficial.venta)}`);
+      if(mep?.venta)quotes.push(`MEP ${fmtMoney(mep.venta)}`);
+      if(blue?.venta)quotes.push(`blue ${fmtMoney(blue.venta)}`);
+      if(cripto?.venta)quotes.push(`cripto ${fmtMoney(cripto.venta)}`);
+      if(quotes.length)lines.push(`Mercado del dia: ${quotes.join(' · ')}.`);
+      if(blue?.venta&&mep?.venta){
+        const spread=((blue.venta-mep.venta)/mep.venta)*100;
+        if(spread>3)lines.push(`Hoy el MEP viene ${Math.round(spread)}% mas barato que el blue. Si queres dolarizar, compararia por ahi primero.`);
+        else if(spread<-3)lines.push('Hoy el blue viene mas barato que el MEP, aunque igual conviene mirar costos y liquidez antes de decidir.');
+      }
+      if(projection.cierreEstimado<=0||projection.libreReal<=0){
+        lines.push('Como el mes viene justo, no sumaria riesgo nuevo ahora. Primero cuidaria liquidez, cuotas y colchon.');
+      }else if(!fondoCubierto){
+        lines.push('Como tu fondo todavia no cubre al menos 3 meses basicos, priorizaria liquidez o instrumentos conservadores antes que algo volatil.');
+        lines.push('Hoy me inclinaria por reforzar fondo, cuenta remunerada o un FCI money market antes de pensar en CEDEAR o apuestas mas agresivas.');
+      }else{
+        lines.push('Con margen y un fondo mas armado, podrias dividir lo nuevo entre liquidez y algo de riesgo moderado.');
+        lines.push('Para corto plazo miraria liquidez; para dolarizar, compararia MEP vs blue; y para largo plazo recien ahi evaluaria CEDEAR con montos chicos.');
+      }
+      if(metrics.cuotasMes>0&&projection.comprometidoPct>=75){
+        lines.push(`Como ya tenes ${fmtMoney(metrics.cuotasMes)} en cuotas este mes, mantendria prudencia con inversiones menos liquidas.`);
+      }
+      return lines.join(' ');
+    }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      const cutSuggestions=deriveCutSuggestions();
+      if(text.includes('fin de mes')||text.includes('llego')){
+        return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      }
+      if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto')){
+        return deriveMarketAdvice();
+      }
+      if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar')){
+        return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
+      }
+      if(text.includes('cuota')||text.includes('tarjeta')){
+        return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si queres revisar otro mes, cambialo en la pestana Cuotas.`;
+      }
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria')){
+        return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
+      }
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
+        return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoria Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+      }
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     async function initRealtimeSync(){
       if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
