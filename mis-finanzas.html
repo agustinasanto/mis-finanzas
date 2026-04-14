@@ -1778,14 +1778,55 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#loginForm')?.addEventListener('submit',handleLoginSubmit);
       $('#biometricBtn')?.addEventListener('click',async()=>{if(!biometricCapabilityChecked)await detectBiometricAvailability();signInWithBiometric();});
     }
+    function deriveCutSuggestions(){
+      const rows=presupuestoRows().map((row)=>({
+        ...row,
+        sobra:Math.max(0,parseNum(row.presupuesto)-parseNum(row.gastado)),
+        exceso:Math.max(0,parseNum(row.gastado)-parseNum(row.presupuesto)),
+        variable:!isFixedCategory(row.cat)
+      }));
+      const overBudget=rows
+        .filter((row)=>row.variable&&row.exceso>0)
+        .sort((a,b)=>b.exceso-a.exceso)
+        .slice(0,3)
+        .map((row)=>({
+          cat:row.cat,
+          reason:`Vas ${fmtMoney(row.exceso)} arriba del presupuesto.`,
+          target:`Si bajas ${fmtMoney(row.exceso)}, volvés al objetivo del mes.`
+        }));
+      if(overBudget.length)return overBudget;
+      const noBudget=rows
+        .filter((row)=>row.variable&&!row.presupuesto&&row.gastado>0)
+        .sort((a,b)=>b.gastado-a.gastado)
+        .slice(0,3)
+        .map((row)=>({
+          cat:row.cat,
+          reason:`Lleva ${fmtMoney(row.gastado)} y no tiene presupuesto cargado.`,
+          target:`Podrías ponerle un tope de referencia para que no se te vaya el mes.`
+        }));
+      if(noBudget.length)return noBudget;
+      return rows
+        .filter((row)=>row.variable&&row.gastado>0)
+        .sort((a,b)=>b.gastado-a.gastado)
+        .slice(0,3)
+        .map((row)=>({
+          cat:row.cat,
+          reason:`Es una de las categorias variables que más viene pesando este mes.`,
+          target:`Recortar aunque sea ${fmtMoney(Math.max(row.gastado*0.15,0))} ya te devolvería aire.`
+        }));
+    }
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
       const projection=deriveMonthProjection();
       const metrics=deriveMetrics();
       const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
       const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      const cutSuggestions=deriveCutSuggestions();
       if(text.includes('fin de mes')||text.includes('llego')){
         return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      }
+      if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar')){
+        return cutSuggestions.length?`Hoy miraría ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.`;
       }
       if(text.includes('cuota')||text.includes('tarjeta')){
         return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si queres revisar otro mes, cambialo en la pestana Cuotas.`;
@@ -1801,6 +1842,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function renderInicio(){
       const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection(),reminders=reminderRows(6);
       const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const cutSuggestions=deriveCutSuggestions();
       const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
       const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
       const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
@@ -1824,6 +1866,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
           <div class="list" style="margin-top:12px">
             <div class="list-item"><div><strong>Ingreso comprometido</strong><span>Parte del ingreso ya tomada por el mes</span></div><div><strong>${projection.comprometidoPct}%</strong></div></div>
             <div class="list-item"><div><strong>Margen para decidir</strong><span>Lo mas libre que te queda hoy</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong></div></div>
+          </div>
+          <div class="list" style="margin-top:12px">
+            <div class="list-item"><div><strong>Donde podrias ajustar</strong><span>Categorias que hoy conviene mirar primero</span></div><div><strong>${cutSuggestions.length?cutSuggestions.length:'0'}</strong></div></div>
+            ${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que sobresalga como recorte urgente.</div>'}
           </div>
         </div>
         <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
