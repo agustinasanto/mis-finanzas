@@ -993,9 +993,42 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function installmentStartMonth(mov){return mov?.inicioCobro||monthKey(mov?.fecha);}
     function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[installmentStartMonth(mov)];const base=installmentStartMonth(mov);return Array.from({length:total},(_,i)=>addMonths(base,i));}
     function activeInstallmentsForMonth(month){
-      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0).map((m)=>{const keys=cuotaMonthKeys(m),idx=keys.indexOf(month),nextPendingIdx=Math.max(0,parseNum(m.cuotaActual||1)-1);return idx===-1||idx<nextPendingIdx?null:{id:m.id,detalle:m.detalle||m.categoria,cuenta:m.cuenta||'Sin cuenta',montoCuota:parseNum(m.monto)/parseNum(m.cuotas),cuotaNumero:idx+1,cuotas:parseNum(m.cuotas),fecha:m.fecha,inicioCobro:installmentStartMonth(m)};}).filter(Boolean);
+      return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0).map((m)=>{
+        const keys=cuotaMonthKeys(m),
+              idx=keys.indexOf(month),
+              nextPendingIdx=Math.max(0,Math.min(parseNum(m.cuotaActual||1)-1,parseNum(m.cuotas)-1));
+        if(idx===-1||idx<nextPendingIdx)return null;
+        return{
+          id:m.id,
+          detalle:m.detalle||m.categoria,
+          cuenta:m.cuenta||'Sin cuenta',
+          montoCuota:parseNum(m.monto)/parseNum(m.cuotas),
+          cuotaNumero:idx+1,
+          cuotas:parseNum(m.cuotas),
+          fecha:m.fecha,
+          inicioCobro:installmentStartMonth(m),
+          isCurrentDue:idx===nextPendingIdx,
+          nextPendingNumber:nextPendingIdx+1
+        };
+      }).filter(Boolean);
     }
     function remainingInstallments(mov){const total=parseNum(mov.cuotas),actual=Math.min(parseNum(mov.cuotaActual||1),total+1);return Math.max(0,total-actual+1);}
+    function currentInstallmentNumber(mov){
+      const total=parseNum(mov?.cuotas);
+      if(total<=0)return 0;
+      return Math.min(parseNum(mov?.cuotaActual||1),total);
+    }
+    function canMarkInstallmentPaid(mov,month){
+      if(!mov||mov.tipo!=='gasto'||mov.forma!=='cuotas'||remainingInstallments(mov)<=0)return false;
+      const keys=cuotaMonthKeys(mov);
+      return keys[currentInstallmentNumber(mov)-1]===monthKey(month);
+    }
+    function markInstallmentPaid(id){
+      const item=data.movimientos.find((m)=>m.id===id);
+      if(!item||remainingInstallments(item)<=0)return false;
+      item.cuotaActual=Math.min(parseNum(item.cuotas)+1,parseNum(item.cuotaActual||1)+1);
+      return true;
+    }
     function cuotaForecast(){return Array.from({length:6},(_,i)=>addMonths(currentMonth,i)).map((month)=>{const entries=activeInstallmentsForMonth(month),grouped={};entries.forEach((item)=>{grouped[item.cuenta]=(grouped[item.cuenta]||0)+item.montoCuota;});return{month,total:entries.reduce((acc,item)=>acc+item.montoCuota,0),grouped};});}
     function latestMovimientos(limit=8){return[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,limit);}
     function isFixedCategory(cat){return['Alquiler','Servicios','Transporte','Moto','Facultad','Gimnasio','Salud'].includes(String(cat||''));}
@@ -1352,8 +1385,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!cuotasManualMonth)cuotasViewMonth=suggestedMonth;
       const monthItems=activeInstallmentsForMonth(suggestedMonth);
       return sectionTemplate('cuotas',`
-        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Cuota actual</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th></th></tr></thead><tbody>${items.map((m)=>`<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${parseNum(m.cuotaActual||1)} / ${parseNum(m.cuotas)}</td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}</td><td>${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">Marcar siguiente</button></td></tr>`).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
-        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(suggestedMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(suggestedMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Â· ${item.cuotaNumero}/${item.cuotas} Â· primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong></div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Próxima cuota</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th>Acción</th></tr></thead><tbody>${items.map((m)=>{const total=parseNum(m.cuotas),current=currentInstallmentNumber(m),currentMonthKey=cuotaMonthKeys(m)[Math.max(0,current-1)]||installmentStartMonth(m),isSingle=total===1,cuotaMensual=parseNum(m.monto)/total;return `<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${current} / ${total}<div class="muted">${escapeHTML(monthLabel(currentMonthKey))}</div></td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(cuotaMensual)}</td><td>${fmtMoney(cuotaMensual*remainingInstallments(m))}</td><td><button type="button" class="btn-soft" data-next-cuota="${m.id}">${isSingle?'Marcar pagada':'Registrar pago'}</button></td></tr>`;}).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(suggestedMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(suggestedMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} Â· ${item.cuotaNumero}/${item.cuotas} Â· primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}${item.isCurrentDue?'':' Â· proyectada'}</span>${item.isCurrentDue?'':`<span class="muted">Antes se paga la cuota ${item.nextPendingNumber}.</span>`}</div><div style="min-width:190px;text-align:right"><strong>${fmtMoney(item.montoCuota)}</strong>${item.isCurrentDue?`<div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-pay-cuota="${item.id}" data-pay-month="${suggestedMonth}">${item.cuotas===1?'Marcar pagada':'Registrar pago'}</button></div>`:`<span class="muted">Todavía no toca pagarla.</span>`}</div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
         <div class="large card"><div class="card-head"><h2>ProyecciÃ³n de cuotas futuras</h2><span class="pill">PrÃ³ximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' Â· '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
       `);
@@ -1588,7 +1621,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
-      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;item.cuotaActual=Math.min(parseNum(item.cuotas)+1,parseNum(item.cuotaActual||1)+1);persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-plan-save]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planSave);if(!plan)return;const input=$(`[data-plan-save-amount="${btn.dataset.planSave}"]`);const monto=parseNum(input?.value);if(monto<=0)return;plan.ahorrado=parseNum(plan.ahorrado)+monto;if(input)input.value='';persistAndRender();}));
