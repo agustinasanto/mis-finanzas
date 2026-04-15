@@ -675,11 +675,27 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
-    function loadConfig(){
-      return {...EMBEDDED_CONFIG};
+    function hasRemoteConfig(cfg){
+      return Boolean(cfg&&cfg.url&&cfg.key&&cfg.code);
     }
-    function saveConfig(cfg){localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));liveConfig=cfg;}
-    function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig=null;}
+    function loadConfig(){
+      try{
+        const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');
+        return hasRemoteConfig(saved)?saved:{...EMBEDDED_CONFIG};
+      }catch(err){
+        return {...EMBEDDED_CONFIG};
+      }
+    }
+    function saveConfig(cfg){
+      const next=hasRemoteConfig(cfg)?cfg:{...EMBEDDED_CONFIG};
+      localStorage.setItem(CONFIG_KEY,JSON.stringify(next));
+      liveConfig=next;
+    }
+    function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig={...EMBEDDED_CONFIG};}
+    function ensureLiveConfig(){
+      if(!hasRemoteConfig(liveConfig))saveConfig(loadConfig());
+      return liveConfig;
+    }
     function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=repairMojibakeString(text);}
     function unlockApp(){
       isUnlocked=true;
@@ -692,7 +708,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
     }
     function refreshAccessOverlays(){
-      const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
+      const activeCfg=ensureLiveConfig();
+      const needsSetup=!hasRemoteConfig(activeCfg);
       if(needsSetup){
         $('#setupOverlay')?.classList.remove('hidden');
         $('#loginOverlay')?.classList.add('hidden');
@@ -849,7 +866,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if($('#setupOverlay')?.classList.contains('hidden'))$('#loginOverlay')?.classList.remove('hidden');
     }
     function refreshAccessOverlays(){
-      const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
+      const activeCfg=ensureLiveConfig();
+      const needsSetup=!hasRemoteConfig(activeCfg);
       if(needsSetup){
         $('#setupOverlay')?.classList.remove('hidden');
         $('#loginOverlay')?.classList.add('hidden');
@@ -859,7 +877,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       }
       $('#setupOverlay')?.classList.add('hidden');
       syncLoginPanel();
-      if(!hasConfiguredCredentials()){lockApp('Creá tu usuario y contraseña para empezar.');return;}
+      if(!hasConfiguredCredentials()){lockApp('Ingresá con tu usuario y tu contraseña para desbloquear la app.');return;}
       if(hasValidSavedAccess())unlockApp('Acceso recordado en este dispositivo.');
       else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
     }
@@ -1669,7 +1687,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncLoginPanel();
       registerServiceWorker();
       fetchBlueRate();
-      if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
+      if(hasRemoteConfig(ensureLiveConfig())){
         syncMode='remote';
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
         initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);setStatus('err',info.text);$('#setupOverlay')?.classList.add('hidden');lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Probá entrar con Google de nuevo en unos segundos.':'La conexión con Supabase ya está cargada. Probá entrar con Google y, si sigue fallando, ajustamos Supabase Auth.');});
@@ -1680,9 +1698,16 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function registerServiceWorker(){
       if(!('serviceWorker' in navigator))return;
-      const protocol=window.location.protocol;
-      if(protocol!=='https:'&&window.location.hostname!=='localhost'&&window.location.hostname!=='127.0.0.1')return;
-      window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});},{once:true});
+      window.addEventListener('load',async()=>{
+        try{
+          const regs=await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((reg)=>reg.unregister().catch(()=>false)));
+          if(window.caches){
+            const keys=await caches.keys();
+            await Promise.all(keys.filter((key)=>/^mis-finanzas-/i.test(key)).map((key)=>caches.delete(key)));
+          }
+        }catch(error){}
+      },{once:true});
     }
     function syncOverlayScrollLock(){
       const blocking=Boolean(!$('#setupOverlay')?.classList.contains('hidden')||!$('#loginOverlay')?.classList.contains('hidden'));
@@ -1715,7 +1740,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
             <div class="login-panel-top">
               <span class="login-badge" id="loginBadge">Acceso personal</span>
               <h3 id="loginPanelTitle">Entrá con tus datos</h3>
-              <p id="loginPanelCopy">Usá tu mail y tu contraseña para desbloquear la app. Si tu teléfono lo permite, después también vas a poder entrar con biometría.</p>
+              <p id="loginPanelCopy">Usá tu usuario y tu contraseña para desbloquear la app. Si tu teléfono lo permite, después también vas a poder entrar con biometría.</p>
               <div class="login-status-card">
                 <div id="loginStatus" class="status">Ingresá con tu usuario y contraseña para desbloquear la app.</div>
               </div>
@@ -1769,7 +1794,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const title=$('#loginTitle'),copy=$('#loginCopy'),ribbonTitle=$('#loginRibbonTitle'),ribbonCopy=$('#loginRibbonCopy'),badge=$('#loginBadge'),panelTitle=$('#loginPanelTitle'),panelCopy=$('#loginPanelCopy'),confirmWrap=$('#loginConfirmWrap'),submitBtn=$('#loginSubmitBtn'),foot=$('#loginFoot'),username=$('#loginUsername'),remember=$('#loginRemember');
       if(!title||!submitBtn)return;
       title.innerHTML=setup?'Creá tu acceso privado':'Volvé a entrar a Mis Finanzas';
-      copy.textContent=setup?'Definí tu usuario y tu contraseña para cuidar tus datos sin depender de proveedores externos.':'Usá tu mail y tu contraseña para volver a entrar a tu app.';
+      copy.textContent=setup?'Definí tu usuario y tu contraseña para cuidar tus datos sin depender de proveedores externos.':'Usá tu usuario y tu contraseña para volver a entrar a tu app.';
       ribbonTitle.textContent=setup?'Tu acceso queda sincronizado':'Tus datos siguen protegidos';
       ribbonCopy.textContent=setup?'Creá tu usuario y contraseña una sola vez y después usá la misma entrada en cualquier dispositivo.':'Tu acceso sigue protegido y podés sumar biometría en este dispositivo si querés.';
       badge.innerHTML=setup?'Crear acceso':'Iniciar sesión';
@@ -1779,8 +1804,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       submitBtn.lastElementChild.textContent=setup?'Crear acceso':'Ingresar';
       foot.textContent=setup?'La primera vez vas a crear tu usuario y contraseña. Después vas a entrar siempre con esos datos.':'Podés marcar este dispositivo para no volver a escribir tus datos cada vez.';
       if(username){
-        username.value=setup?'':(readSavedAccess()?.username||data.auth.username||PRESET_ACCESS.username);
-        username.readOnly=!setup;
+        username.value=setup?'':(readSavedAccess()?.username||'');
+        username.readOnly=false;
       }
       if(remember)remember.checked=Boolean(localStorage.getItem(REMEMBER_KEY));
       syncBiometricUI();
@@ -1810,7 +1835,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       }
       $('#setupOverlay')?.classList.add('hidden');
       syncLoginPanel();
-      if(!hasConfiguredCredentials()){lockApp('Creá tu usuario y contraseña para empezar.');return;}
+      if(!hasConfiguredCredentials()){lockApp('Ingresá con tu usuario y tu contraseña para desbloquear la app.');return;}
       if(hasValidSavedAccess())unlockApp('Acceso recordado en este dispositivo.');
       else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
       syncOverlayScrollLock();
@@ -1902,7 +1927,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
       }
       if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar')){
-        return cutSuggestions.length?`Hoy miraría ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.`;
+        return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(", ")}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
       }
       if(text.includes('cuota')||text.includes('tarjeta')){
         return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si queres revisar otro mes, cambialo en la pestana Cuotas.`;
@@ -2093,7 +2118,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       detectBiometricAvailability().catch(()=>{});
       registerServiceWorker();
       fetchBlueRate();
-      if(liveConfig&&liveConfig.url&&liveConfig.code&&liveConfig.key){
+      if(hasRemoteConfig(ensureLiveConfig())){
         syncMode='remote';
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
         initRealtimeSync().catch((error)=>{
@@ -2101,7 +2126,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           sync('err',info.text);
           setStatus('err',info.text);
           $('#setupOverlay')?.classList.add('hidden');
-          lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Probá de nuevo en unos segundos.':'La conexión con Supabase ya está cargada. Entrá con tu usuario y tu contraseña para seguir.');
+          lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Igual podés entrar con tu usuario y tu contraseña mientras se estabiliza.':'La conexión con Supabase ya está cargada. Entrá con tu usuario y tu contraseña para seguir.');
         });
       }else{
         refreshAccessOverlays();

@@ -1,41 +1,16 @@
-const CACHE_NAME = 'mis-finanzas-v1';
-const APP_ASSETS = [
-  './',
-  './index.html',
-  './mis-finanzas.html',
-  './manifest.json',
-  './icon.svg',
-  'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js'
-];
+const CACHE_PREFIX = 'mis-finanzas-';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_ASSETS)).catch(() => Promise.resolve())
-  );
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX)).map((key) => caches.delete(key)));
+    await self.clients.claim();
+    try { await self.registration.unregister(); } catch (error) {}
+  })());
 });
 
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
-
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
-        return response;
-      })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match('./index.html') || caches.match('./mis-finanzas.html')))
-  );
-});
+self.addEventListener('fetch', () => {});
