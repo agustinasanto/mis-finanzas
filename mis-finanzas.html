@@ -1735,6 +1735,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
       document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
       document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-plan-save]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planSave);if(!plan)return;const input=$(`[data-plan-save-amount="${btn.dataset.planSave}"]`);const monto=parseNum(input?.value);if(monto<=0)return;plan.ahorrado=parseNum(plan.ahorrado)+monto;if(input)input.value='';persistAndRender();}));
@@ -2310,6 +2311,222 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
         return `En esta app el bloque "Ahorro general" queda separado del fondo de emergencia y de inversiones. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoria Ahorro, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
       }
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
+    }
+    function argentinaBudgetReference(){
+      return{
+        sourceMonth:'Marzo 2026',
+        inflation:'IPC nacional 3,4% y referencia de canasta basica total vigente en 2026',
+        floors:{
+          Alquiler:320000,
+          Servicios:85000,
+          Supermercado:180000,
+          Transporte:65000,
+          Moto:50000,
+          Facultad:90000,
+          Gimnasio:45000,
+          Salud:70000,
+          Salidas:65000,
+          Compras:50000,
+          Ropa:45000,
+          Otros:40000
+        },
+        inflationBias:{
+          Alquiler:1.068,
+          Servicios:1.068,
+          Supermercado:1.034,
+          Transporte:1.02,
+          Moto:1.02,
+          Facultad:1.012,
+          Gimnasio:1.026,
+          Salud:1.025,
+          Salidas:1.03,
+          Compras:1.026,
+          Ropa:1.0,
+          Otros:1.026
+        }
+      };
+    }
+    function deriveMetodoMensual(){
+      const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
+      const totalPct=(data.metodo?.items||[]).reduce((acc,item)=>acc+parseNum(item.porcentaje),0);
+      const gastosBasicos=presupuestoRows().reduce((acc,row)=>acc+row.gastado,0);
+      const ahorroActual=ahorroGeneralMes(currentMonth);
+      const metrics=deriveMetrics();
+      const ahorroConFondo=ahorroActual+metrics.aportesFondoMes;
+      const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
+      const items=(data.metodo?.items||[]).map((item)=>({
+        ...item,
+        porcentaje:parseNum(item.porcentaje),
+        montoObjetivo:ingresosMes*(parseNum(item.porcentaje)/100)
+      }));
+      const usados={fijos:gastosBasicos,ahorro:ahorroConFondo,inversion:inversionesMes};
+      return{ingresosMes,totalPct,items,usados,nombre:data.metodo?.nombre||'Metodo mensual',ahorroGeneral:ahorroActual,ahorroConFondo,aportesFondo:metrics.aportesFondoMes,inversionesMes};
+    }
+    function deriveMetodoBudgetPlan(){
+      const metodo=deriveMetodoMensual();
+      const reference=argentinaBudgetReference();
+      const spendingItem=metodo.items.find((item)=>item.id==='fijos')||metodo.items[0]||{montoObjetivo:0};
+      const spendingTarget=parseNum(spendingItem.montoObjetivo);
+      const reservePct=12;
+      const reserveBase=Math.max(spendingTarget*0.12,spendingTarget>450000?70000:35000);
+      const reserveAmount=roundBudgetSuggestion(Math.min(spendingTarget*0.24,reserveBase));
+      const distributableAmount=Math.max(0,spendingTarget-reserveAmount);
+      const months=[currentMonth,addMonths(currentMonth,-1),addMonths(currentMonth,-2)];
+      const eligibleCats=data.categorias.filter((cat)=>!isIncomeCategory(cat)&&cat!=='Ahorro');
+      const weighted=eligibleCats.map((cat)=>{
+        const history=months.reduce((acc,month)=>acc+parseNum(gastosPorCategoriaMes(month)[cat]),0);
+        const base=metodoCategoryBaseWeight(cat);
+        const floor=(reference.floors[cat]||40000)*(reference.inflationBias[cat]||1);
+        const current=parseNum(data.presupuestos[cat]);
+        const weight=Math.max(history,floor*0.75,base*1000);
+        return{cat,history,base,floor,current,weight};
+      });
+      const floorTotal=weighted.reduce((acc,item)=>acc+item.floor,0);
+      const floorScale=floorTotal>0?Math.min(1,distributableAmount/floorTotal):1;
+      const minAssigned=weighted.map((item)=>({...item,minAssigned:roundBudgetSuggestion(item.floor*floorScale)}));
+      const minTotal=minAssigned.reduce((acc,item)=>acc+item.minAssigned,0);
+      const remaining=Math.max(0,distributableAmount-minTotal);
+      const totalWeight=minAssigned.reduce((acc,item)=>acc+item.weight,0);
+      let assigned=0;
+      const suggestions=minAssigned.map((item,index)=>{
+        const extraRaw=totalWeight?(remaining*item.weight/totalWeight):0;
+        const extra=index===minAssigned.length-1?Math.max(0,remaining-assigned):roundBudgetSuggestion(extraRaw);
+        assigned+=extra;
+        const suggested=item.minAssigned+extra;
+        return{...item,suggested,diff:suggested-item.current};
+      });
+      return{
+        spendingTarget,
+        reservePct,
+        reserveAmount,
+        distributableAmount,
+        fixedSuggested:suggestions.filter((item)=>isFixedCategory(item.cat)).reduce((acc,item)=>acc+item.suggested,0),
+        variableSuggested:suggestions.filter((item)=>!isFixedCategory(item.cat)).reduce((acc,item)=>acc+item.suggested,0),
+        reference,
+        suggestions
+      };
+    }
+    function renderMetodo(){
+      const metodo=deriveMetodoMensual();
+      const budgetPlan=deriveMetodoBudgetPlan();
+      return sectionTemplate('metodo',`
+        <div class="medium card">
+          <div class="card-head"><h2>Metodo mensual</h2><span class="pill">${escapeHTML(metodo.nombre)}</span></div>
+          <form id="metodoForm" class="grid">
+            <div class="large"><label for="metodoNombre">Nombre del metodo</label><input id="metodoNombre" value="${escapeHTML(data.metodo.nombre||'')}" placeholder="ej. 50 / 30 / 20" /></div>
+            ${data.metodo.items.map((item)=>`
+              <div class="medium">
+                <label for="metodo_nombre_${item.id}">Bloque</label>
+                <input id="metodo_nombre_${item.id}" data-metodo-nombre="${item.id}" value="${escapeHTML(item.nombre)}" />
+              </div>
+              <div class="medium">
+                <label for="metodo_pct_${item.id}">Porcentaje</label>
+                <input id="metodo_pct_${item.id}" data-metodo-pct="${item.id}" type="number" min="0" max="100" step="0.01" value="${parseNum(item.porcentaje)}" />
+              </div>
+            `).join('')}
+            <div class="large"><button type="submit">Guardar metodo</button></div>
+          </form>
+        </div>
+        <div class="medium card">
+          <div class="card-head"><h2>Base del calculo</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="list">
+            <div class="list-item"><div><strong>Ingreso del mes</strong><span>Suma de ingresos cargados</span></div><div><strong>${fmtMoney(metodo.ingresosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal deberia dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
+            <div class="list-item"><div><strong>Ahorro dentro del metodo</strong><span>Cuenta ahorro libre mas aportes al fondo de emergencia</span></div><div><strong>${fmtMoney(metodo.ahorroConFondo)}</strong></div></div>
+            <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribucion suma 100% y queda balanceada.':'La distribucion no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Distribucion aplicada al sueldo</h2><span class="pill">Se recalcula sola</span></div>
+          <div class="list">
+            ${metodo.items.map((item)=>`
+              <div class="list-item">
+                <div style="flex:1">
+                  <strong>${escapeHTML(item.nombre)}</strong>
+                  <div class="hint">${item.porcentaje}% del ingreso del mes</div>
+                  <div class="progress" style="margin-top:10px"><span style="width:${Math.max(0,Math.min(100,item.porcentaje))}%;background:${escapeHTML(item.color)}"></span></div>
+                </div>
+                <div style="min-width:180px">
+                  <strong>${fmtMoney(item.montoObjetivo)}</strong>
+                  <span class="muted">Objetivo</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Referencia rapida</h2><span class="pill">Comparacion actual</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Bloque</th><th>Objetivo</th><th>Referencia actual</th><th>Diferencia</th></tr></thead>
+              <tbody>
+                ${metodo.items.map((item)=>{
+                  const ref=item.id==='fijos'?metodo.usados.fijos:item.id==='ahorro'?metodo.usados.ahorro:item.id==='inversion'?metodo.usados.inversion:0;
+                  const diff=ref-item.montoObjetivo;
+                  return `<tr><td>${escapeHTML(item.nombre)}</td><td>${fmtMoney(item.montoObjetivo)}</td><td>${fmtMoney(ref)}</td><td>${diff===0?'En linea':diff>0?`+${fmtMoney(diff)}`:`-${fmtMoney(Math.abs(diff))}`}</td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:12px">En el bloque de ahorro ahora contamos ahorro libre mas aportes al fondo, porque en la practica ambas cosas te sacan margen del mes. Las inversiones siguen aparte.</div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Presupuestos sugeridos</h2><span class="pill">${escapeHTML(budgetPlan.reference.sourceMonth)}</span></div>
+          <div class="inline-fields">
+            <div class="list-item"><div><strong>Bloque para gastos</strong><span>Sale del bloque de gastos y basicos del metodo</span></div><div><strong>${fmtMoney(budgetPlan.spendingTarget)}</strong></div></div>
+            <div class="list-item"><div><strong>Vida diaria</strong><span>${budgetPlan.reservePct}% reservado para margen cotidiano</span></div><div><strong>${fmtMoney(budgetPlan.reserveAmount)}</strong></div></div>
+            <div class="list-item"><div><strong>Para presupuestar</strong><span>Lo que repartimos entre categorias</span></div><div><strong>${fmtMoney(budgetPlan.distributableAmount)}</strong></div></div>
+            <div class="list-item"><div><strong>Mix sugerido</strong><span>${fmtMoney(budgetPlan.fixedSuggested)} fijos y ${fmtMoney(budgetPlan.variableSuggested)} variables</span></div><div><button type="button" class="btn-soft" id="applyMetodoBudgets">Usar sugerencia</button></div></div>
+          </div>
+          <div class="table-wrap" style="margin-top:12px">
+            <table>
+              <thead><tr><th>Categoria</th><th>Sugerido</th><th>Actual</th><th>Diferencia</th><th>Base</th></tr></thead>
+              <tbody>
+                ${budgetPlan.suggestions.map((item)=>`<tr><td>${escapeHTML(item.cat)}</td><td>${fmtMoney(item.suggested)}</td><td>${fmtMoney(item.current)}</td><td>${item.diff===0?'En linea':item.diff>0?`+${fmtMoney(item.diff)}`:`-${fmtMoney(Math.abs(item.diff))}`}</td><td>${item.history>0?'Historial + piso argentino':'Piso argentino actualizado'}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:12px">Estas sugerencias toman pisos mas realistas para Argentina y un sesgo de inflacion reciente por rubro. A partir de ahi se ajustan con tus ultimos meses y dejan un margen aparte para vida diaria.</div>
+        </div>
+      `);
+    }
+    function renderCuotas(){
+      const activas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0);
+      const grouped={};
+      activas.forEach((m)=>{const key=m.cuenta||'Sin cuenta';(grouped[key]=grouped[key]||[]).push(m);});
+      const forecast=cuotaForecast();
+      const suggestedMonth=cuotasManualMonth?cuotasViewMonth:(forecast.find((row)=>row.total>0)?.month||cuotasViewMonth);
+      if(!cuotasManualMonth)cuotasViewMonth=suggestedMonth;
+      const monthItems=activeInstallmentsForMonth(suggestedMonth);
+      return sectionTemplate('cuotas',`
+        <div class="large card"><div class="card-head"><h2>Compras en cuotas activas</h2><span class="pill">${activas.length} activas</span></div><div class="list">${Object.keys(grouped).length?Object.entries(grouped).map(([cuenta,items])=>`<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><h3>${escapeHTML(cuenta)}</h3><span class="pill">${items.length} compras</span></div><div class="table-wrap"><table><thead><tr><th>Detalle</th><th>Proxima cuota</th><th>Primer cobro</th><th>Cuota mensual</th><th>Pendiente</th><th>Acciones</th></tr></thead><tbody>${items.map((m)=>{const total=parseNum(m.cuotas),current=currentInstallmentNumber(m),currentMonthKey=cuotaMonthKeys(m)[Math.max(0,current-1)]||installmentStartMonth(m),isSingle=total===1,cuotaMensual=parseNum(m.monto)/total;return `<tr><td>${escapeHTML(m.detalle||m.categoria)}</td><td>${current} / ${total}<div class="muted">${escapeHTML(monthLabel(currentMonthKey))}</div></td><td>${escapeHTML(monthLabel(installmentStartMonth(m)))}</td><td>${fmtMoney(cuotaMensual)}</td><td>${fmtMoney(cuotaMensual*remainingInstallments(m))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-cuota="${m.id}">Editar compra</button><button type="button" class="btn-soft" data-next-cuota="${m.id}">${isSingle?'Marcar pagada':'Registrar pago'}</button></div></td></tr>`;}).join('')}</tbody></table></div></div>`).join(''):'<div class="status ok">No hay compras en cuotas activas.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas a pagar</h2><span class="pill">${escapeHTML(monthLabel(suggestedMonth))}</span></div><div class="inline-fields" style="margin-bottom:12px"><div><label for="cuotasViewMonth">Mes a revisar</label><input id="cuotasViewMonth" type="month" value="${escapeHTML(suggestedMonth)}" /></div></div><div class="list">${monthItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} | ${item.cuotaNumero}/${item.cuotas} | primer cobro ${escapeHTML(monthLabel(item.inicioCobro))}${item.isCurrentDue?'':' | proyectada'}</span>${item.isCurrentDue?'':`<span class="muted">Antes se paga la cuota ${item.nextPendingNumber}.</span>`}</div><div style="min-width:220px;text-align:right"><strong>${fmtMoney(item.montoCuota)}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-edit-cuota="${item.id}">Editar compra</button>${item.isCurrentDue?`<button type="button" class="btn-soft" data-pay-cuota="${item.id}" data-pay-month="${suggestedMonth}">${item.cuotas===1?'Marcar pagada':'Registrar pago'}</button>`:''}</div>${item.isCurrentDue?'':`<span class="muted">Todavia no toca pagarla.</span>`}</div></div>`).join('')||'<div class="status ok">Sin compromisos para ese mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Total comprometido</h2><span class="pill">6 meses</span></div><div class="list">${forecast.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(row.month))}</strong></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Proyeccion de cuotas futuras</h2><span class="pill">Proximos 6 meses</span></div><div class="table-wrap"><table><thead><tr><th>Mes</th><th>Total</th><th>Desglose por tarjeta / cuenta</th></tr></thead><tbody>${forecast.map((row)=>`<tr><td>${escapeHTML(monthLabel(row.month))}</td><td>${fmtMoney(row.total)}</td><td>${Object.keys(row.grouped).length?Object.entries(row.grouped).map(([k,v])=>`${escapeHTML(k)}: ${fmtMoney(v)}`).join(' | '):'Sin cuotas'}</td></tr>`).join('')}</tbody></table></div></div>
+      `);
+    }
+    function renderPlanes(){
+      const order={Alta:0,Media:1,Baja:2},statusOrder={Pendiente:0,Reprogramada:1,Comprada:2},plans=[...data.planes].sort((a,b)=>(statusOrder[a.estado]??99)-(statusOrder[b.estado]??99)||(order[a.prioridad]??99)-(order[b.prioridad]??99)||String(a.mes||'').localeCompare(String(b.mes||'')));
+      return sectionTemplate('planes',`
+        <div class="medium card"><div class="card-head"><h2>Nueva compra planeada</h2><span class="pill">Orden por prioridad</span></div><form id="planForm" class="grid"><div class="medium"><label for="planNombre">Nombre</label><input id="planNombre" required /></div><div class="medium"><label for="planCosto">Costo</label><input id="planCosto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="planPrioridad">Prioridad</label><select id="planPrioridad"><option>Alta</option><option>Media</option><option>Baja</option></select></div><div class="medium"><label for="planMes">Mes objetivo</label><input id="planMes" type="month" /></div><div class="large"><label for="planNotas">Notas</label><textarea id="planNotas"></textarea></div><div class="large"><button type="submit">Guardar compra planeada</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Prioridades</h2><span class="pill">En foco</span></div><div class="list">${['Alta','Media','Baja'].map((prio)=>`<div class="list-item"><div><strong>${prio}</strong><span class="muted">${plans.filter((p)=>p.prioridad===prio&&p.estado!=='Comprada').length} activas</span></div><div><strong>${fmtMoney(plans.filter((p)=>p.prioridad===prio&&p.estado!=='Comprada').reduce((acc,p)=>acc+Math.max(0,parseNum(p.costo)-parseNum(p.ahorrado)),0))}</strong><span class="muted">pendiente</span></div></div>`).join('')}</div></div>
+        <div class="large card"><div class="card-head"><h2>Listado de compras planeadas</h2><span class="pill">${plans.length} registradas</span></div><div class="list">${plans.map((p)=>{const costo=parseNum(p.costo),ahorrado=parseNum(p.ahorrado),faltante=Math.max(0,costo-ahorrado),pct=costo?Math.min(100,Math.round(ahorrado/costo*100)):0;return `<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><div><h3 style="margin:0">${escapeHTML(p.nombre)}</h3><div class="hint">${escapeHTML(p.estado||'Pendiente')} | ${escapeHTML(p.prioridad)} | ${escapeHTML(p.mes||'-')}</div></div><span class="pill">${fmtMoney(costo)}</span></div><div class="list"><div class="list-item"><div><strong>Ahorro acumulado</strong><span>${fmtMoney(ahorrado)} ahorrados</span></div><div><strong>${fmtMoney(faltante)}</strong><span class="muted">faltan</span></div></div><div style="padding:0 2px"><div class="progress"><span style="width:${pct}%"></span></div></div>${p.notas?`<div class="hint">${escapeHTML(p.notas)}</div>`:''}<div class="inline-fields"><div><label>Monto a sumar</label><input type="number" min="0" step="0.01" data-plan-save-amount="${p.id}" placeholder="Monto" /></div><div style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" data-plan-save="${p.id}">Sumar ahorro</button></div></div><div class="setup-actions">${p.estado!=='Comprada'?`<button type="button" class="btn-ok" data-plan-bought="${p.id}">Compre</button><button type="button" class="btn-soft" data-plan-next="${p.id}">Mes siguiente</button>`:`<button type="button" class="btn-soft" data-plan-pending="${p.id}">Volver a pendiente</button>`}<button type="button" class="btn-danger" data-del-plan="${p.id}">Eliminar</button></div></div></div>`;}).join('')||'<div class="status ok">Sin compras planeadas por ahora.</div>'}</div></div>
+      `);
+    }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      const cutSuggestions=deriveCutSuggestions();
+      if(text.includes('fin de mes')||text.includes('llego'))return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto'))return deriveMarketAdvice();
+      if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar'))return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
+      if(text.includes('cuota')||text.includes('tarjeta'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga, ahora podes editar la compra desde la pestana Cuotas.`;
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria'))return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion'))return `En el metodo mensual, el ahorro ahora toma ahorro libre mas aportes al fondo de emergencia. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en ahorro libre, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
       return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     async function initRealtimeSync(){
