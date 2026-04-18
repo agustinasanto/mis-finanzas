@@ -997,6 +997,48 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
       persistAndRender({localOnly:true});
     }
+    function metodoCategoryBaseWeight(cat){
+      const weights={Alquiler:28,Servicios:10,Supermercado:18,Transporte:9,Moto:5,Facultad:7,Gimnasio:4,Salud:7,Salidas:5,Compras:4,Ropa:4,Otros:3};
+      if(weights[cat]!=null)return weights[cat];
+      return isFixedCategory(cat)?6:4;
+    }
+    function roundBudgetSuggestion(amount){
+      const step=amount>=100000?5000:amount>=20000?1000:100;
+      return Math.max(0,Math.round(parseNum(amount)/step)*step);
+    }
+    function deriveMetodoBudgetPlan(){
+      const metodo=deriveMetodoMensual();
+      const spendingItem=metodo.items.find((item)=>item.id==='fijos')||metodo.items[0]||{montoObjetivo:0};
+      const spendingTarget=parseNum(spendingItem.montoObjetivo);
+      const reservePct=15;
+      const reserveAmount=roundBudgetSuggestion(spendingTarget*(reservePct/100));
+      const distributableAmount=Math.max(0,spendingTarget-reserveAmount);
+      const months=[currentMonth,addMonths(currentMonth,-1),addMonths(currentMonth,-2)];
+      const eligibleCats=data.categorias.filter((cat)=>!isIncomeCategory(cat)&&cat!=='Ahorro');
+      const weighted=eligibleCats.map((cat)=>{
+        const history=months.reduce((acc,month)=>acc+parseNum(gastosPorCategoriaMes(month)[cat]),0);
+        const base=metodoCategoryBaseWeight(cat);
+        const weight=history>0?(history*0.7+base*1000*0.3):(base*1000);
+        return{cat,history,base,weight,current:parseNum(data.presupuestos[cat])};
+      });
+      const totalWeight=weighted.reduce((acc,item)=>acc+item.weight,0);
+      let assigned=0;
+      const suggestions=weighted.map((item,index)=>{
+        const raw=totalWeight?(distributableAmount*item.weight/totalWeight):0;
+        const suggested=index===weighted.length-1?Math.max(0,distributableAmount-assigned):roundBudgetSuggestion(raw);
+        assigned+=suggested;
+        return{...item,suggested,diff:suggested-item.current};
+      });
+      return{
+        spendingTarget,
+        reservePct,
+        reserveAmount,
+        distributableAmount,
+        fixedSuggested:suggestions.filter((item)=>isFixedCategory(item.cat)).reduce((acc,item)=>acc+item.suggested,0),
+        variableSuggested:suggestions.filter((item)=>!isFixedCategory(item.cat)).reduce((acc,item)=>acc+item.suggested,0),
+        suggestions
+      };
+    }
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
       const metrics=deriveMetrics();
@@ -1686,6 +1728,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
       document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
       $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
+      $('#applyMetodoBudgets')?.addEventListener('click',()=>{deriveMetodoBudgetPlan().suggestions.forEach((item)=>{data.presupuestos[item.cat]=item.suggested;});persistAndRender();});
       $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'MÃƒÂ©todo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
@@ -2070,6 +2113,90 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div><div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div><div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div><div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresa un monto para convertir usando dolar blue venta/compra.':'No disponible'}</div></div></div>
         <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderMetodo(){
+      const metodo=deriveMetodoMensual();
+      const budgetPlan=deriveMetodoBudgetPlan();
+      return sectionTemplate('metodo',`
+        <div class="medium card">
+          <div class="card-head"><h2>Metodo mensual</h2><span class="pill">${escapeHTML(metodo.nombre)}</span></div>
+          <form id="metodoForm" class="grid">
+            <div class="large"><label for="metodoNombre">Nombre del metodo</label><input id="metodoNombre" value="${escapeHTML(data.metodo.nombre||'')}" placeholder="ej. 50 / 30 / 20" /></div>
+            ${data.metodo.items.map((item)=>`
+              <div class="medium">
+                <label for="metodo_nombre_${item.id}">Bloque</label>
+                <input id="metodo_nombre_${item.id}" data-metodo-nombre="${item.id}" value="${escapeHTML(item.nombre)}" />
+              </div>
+              <div class="medium">
+                <label for="metodo_pct_${item.id}">Porcentaje</label>
+                <input id="metodo_pct_${item.id}" data-metodo-pct="${item.id}" type="number" min="0" max="100" step="0.01" value="${parseNum(item.porcentaje)}" />
+              </div>
+            `).join('')}
+            <div class="large"><button type="submit">Guardar metodo</button></div>
+          </form>
+        </div>
+        <div class="medium card">
+          <div class="card-head"><h2>Base del calculo</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="list">
+            <div class="list-item"><div><strong>Ingreso del mes</strong><span>Suma de ingresos cargados</span></div><div><strong>${fmtMoney(metodo.ingresosMes)}</strong></div></div>
+            <div class="list-item"><div><strong>Total asignado</strong><span>La suma ideal deberia dar 100%</span></div><div><strong>${metodo.totalPct}%</strong></div></div>
+            <div class="list-item"><div><strong>Ahorro general</strong><span>Cuenta solo movimientos del mes en la categoria Ahorro</span></div><div><strong>${fmtMoney(metodo.ahorroGeneral)}</strong></div></div>
+            <div class="status ${metodo.totalPct===100?'ok':'warn'}">${metodo.totalPct===100?'La distribucion suma 100% y queda balanceada.':'La distribucion no suma 100%. Igual la mostramos, pero conviene ajustarla para que cierre.'}</div>
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Distribucion aplicada al sueldo</h2><span class="pill">Se recalcula sola</span></div>
+          <div class="list">
+            ${metodo.items.map((item)=>`
+              <div class="list-item">
+                <div style="flex:1">
+                  <strong>${escapeHTML(item.nombre)}</strong>
+                  <div class="hint">${item.porcentaje}% del ingreso del mes</div>
+                  <div class="progress" style="margin-top:10px"><span style="width:${Math.max(0,Math.min(100,item.porcentaje))}%;background:${escapeHTML(item.color)}"></span></div>
+                </div>
+                <div style="min-width:180px">
+                  <strong>${fmtMoney(item.montoObjetivo)}</strong>
+                  <span class="muted">Objetivo</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Referencia rapida</h2><span class="pill">Comparacion actual</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Bloque</th><th>Objetivo</th><th>Referencia actual</th><th>Diferencia</th></tr></thead>
+              <tbody>
+                ${metodo.items.map((item)=>{
+                  const ref=item.id==='fijos'?metodo.usados.fijos:item.id==='ahorro'?metodo.usados.ahorro:item.id==='inversion'?metodo.usados.inversion:0;
+                  const diff=ref-item.montoObjetivo;
+                  return `<tr><td>${escapeHTML(item.nombre)}</td><td>${fmtMoney(item.montoObjetivo)}</td><td>${fmtMoney(ref)}</td><td>${diff===0?'En linea':diff>0?`+${fmtMoney(diff)}`:`-${fmtMoney(Math.abs(diff))}`}</td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:12px">Referencia actual: gastos del mes para fijos, categoria Ahorro del mes para ahorro general e inversiones cargadas del mes para inversiones. El fondo de emergencia queda aparte y se sigue viendo en Fondo.</div>
+        </div>
+        <div class="large card">
+          <div class="card-head"><h2>Presupuestos sugeridos</h2><span class="pill">Segun ingreso y metodo</span></div>
+          <div class="inline-fields">
+            <div class="list-item"><div><strong>Bloque para gastos</strong><span>Sale del bloque de gastos y basicos del metodo</span></div><div><strong>${fmtMoney(budgetPlan.spendingTarget)}</strong></div></div>
+            <div class="list-item"><div><strong>Vida diaria</strong><span>${budgetPlan.reservePct}% reservado para margen cotidiano</span></div><div><strong>${fmtMoney(budgetPlan.reserveAmount)}</strong></div></div>
+            <div class="list-item"><div><strong>Para presupuestar</strong><span>Lo que repartimos entre categorias</span></div><div><strong>${fmtMoney(budgetPlan.distributableAmount)}</strong></div></div>
+            <div class="list-item"><div><strong>Mix sugerido</strong><span>${fmtMoney(budgetPlan.fixedSuggested)} fijos y ${fmtMoney(budgetPlan.variableSuggested)} variables</span></div><div><button type="button" class="btn-soft" id="applyMetodoBudgets">Usar sugerencia</button></div></div>
+          </div>
+          <div class="table-wrap" style="margin-top:12px">
+            <table>
+              <thead><tr><th>Categoria</th><th>Sugerido</th><th>Actual</th><th>Diferencia</th><th>Base</th></tr></thead>
+              <tbody>
+                ${budgetPlan.suggestions.map((item)=>`<tr><td>${escapeHTML(item.cat)}</td><td>${fmtMoney(item.suggested)}</td><td>${fmtMoney(item.current)}</td><td>${item.diff===0?'En linea':item.diff>0?`+${fmtMoney(item.diff)}`:`-${fmtMoney(Math.abs(item.diff))}`}</td><td>${item.history>0?'Tus ultimos 3 meses':'Peso sugerido por categoria'}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:12px">La sugerencia se recalcula con los ingresos del mes. Dejamos un colchon para vida diaria y repartimos el resto entre categorias usando tus gastos recientes y una base realista cuando todavia no hay historial.</div>
+        </div>
       `);
     }
     function renderFondo(){
