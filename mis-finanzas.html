@@ -143,8 +143,9 @@
     .login-panel p{margin:0;color:var(--muted)}
     .login-status-card{padding:14px;border-radius:20px;background:rgba(255,255,255,.74);border:1px solid rgba(241,216,228,.9)}
     .login-cta{display:grid;gap:12px;margin-top:18px}
-    .login-google-btn{display:flex;align-items:center;justify-content:center;gap:12px;padding:15px 18px;font-weight:700;font-size:1rem;border-radius:22px;background:linear-gradient(135deg,#f4bfd8,#e78db7);color:#6a3f55;box-shadow:0 18px 28px rgba(231,141,183,.22)}
-    .login-google-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.9);color:#db6a9a;font-weight:800;box-shadow:0 6px 14px rgba(231,141,183,.14)}
+    .login-google-btn{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:62px;padding:15px 20px;font-weight:700;font-size:1rem;border-radius:22px;background:linear-gradient(135deg,#f4bfd8,#e78db7);color:#6a3f55;box-shadow:0 18px 28px rgba(231,141,183,.22);text-align:center}
+    .login-google-btn span:last-child{display:block;line-height:1.15}
+    .login-google-mark{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.9);color:#db6a9a;font-weight:800;box-shadow:0 6px 14px rgba(231,141,183,.14)}
     .login-subtle{background:linear-gradient(180deg,rgba(255,250,252,.95),rgba(255,243,248,.95));border:1px solid var(--line);box-shadow:none}
     .login-foot{margin-top:12px;font-size:.84rem;color:#9a7b88;text-align:center}
     .setup-steps{margin:16px 0;padding-left:18px;color:var(--muted)}
@@ -665,7 +666,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
           device:String(src.auth.biometric.device||'platform')
         }:null
       }:{username:'',passwordHash:'',salt:'',biometric:null};
-      next.fondo=src.fondo&&typeof src.fondo==='object'?{basicos:parseNum(src.fondo.basicos),ahorrado:parseNum(src.fondo.ahorrado),aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes:[]}:{basicos:0,ahorrado:0,aportes:[]};
+      next.fondo=src.fondo&&typeof src.fondo==='object'?{
+        basicos:parseNum(src.fondo.basicos),
+        ahorrado:parseNum(src.fondo.ahorrado),
+        aportes:Array.isArray(src.fondo.aportes)?src.fondo.aportes.map((item)=>({
+          id:item?.id||uid(),
+          tipo:String(item?.tipo||'aporte'),
+          monto:parseNum(item?.monto),
+          fecha:String(item?.fecha||''),
+          detalle:String(item?.detalle||'')
+        })):[]
+      }:{basicos:0,ahorrado:0,aportes:[]};
       next.metas=Array.isArray(src.metas)?src.metas:[];
       next.metodo=src.metodo&&typeof src.metodo==='object'?{
         nombre:src.metodo.nombre||DEF.metodo.nombre,
@@ -986,6 +997,31 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
       persistAndRender({localOnly:true});
     }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const metrics=deriveMetrics();
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      const cutSuggestions=deriveCutSuggestions();
+      if(text.includes('fin de mes')||text.includes('llego')){
+        return `Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes, ${fmtMoney(metrics.gastosMes)} en gastos y ${fmtMoney(metrics.cuotasMes)} en cuotas activas.`;
+      }
+      if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto')){
+        return deriveMarketAdvice();
+      }
+      if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar')){
+        return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
+      }
+      if(text.includes('cuota')||text.includes('tarjeta')){
+        return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si queres revisar otro mes, cambialo en la pestana Cuotas.`;
+      }
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria')){
+        return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:'Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.';
+      }
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion')){
+        return `Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoria Ahorro, ${fmtMoney(metrics.aportesFondoMes)} como movimiento neto del fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+      }
+      return `Puedo ayudarte con cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes.`;
+    }
     async function initRealtimeSync(){
       if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
       const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
@@ -1104,11 +1140,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function gastosPorCategoriaMes(month){const out={};data.movimientos.forEach((m)=>{if(m.tipo!=='gasto')return;const value=movimientoMontoMes(m,month);if(!value)return;out[m.categoria]=(out[m.categoria]||0)+value;});return out;}
     function presupuestoRows(){return data.categorias.filter((cat)=>!isIncomeCategory(cat)).map((cat)=>{const presupuesto=parseNum(data.presupuestos[cat]);const gastado=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);const pct=presupuesto?Math.min(100,Math.round(gastado/presupuesto*100)):0;const cuotas=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.categoria===cat&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1).reduce((acc,m)=>acc+(cuotaMonthKeys(m).includes(currentMonth)?parseNum(m.monto)/parseNum(m.cuotas):0),0);return{cat,presupuesto,gastado,pct,cuotas};});}
+    function fondoMovimientosMes(month){
+      return (data.fondo.aportes||[]).filter((item)=>monthKey(item.fecha)===month).map((item)=>({
+        ...item,
+        tipo:item.tipo==='retiro'?'retiro':'aporte',
+        monto:parseNum(item.monto)
+      }));
+    }
     function deriveMetrics(){
       const ingresosMes=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0);
       const gastosMes=data.movimientos.filter((m)=>m.tipo==='gasto'&&monthKey(m.fecha)<=addMonths(currentMonth,12)).reduce((acc,m)=>acc+movimientoMontoMes(m,currentMonth),0);
       const inversionesMes=data.inversiones.filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0);
-      const aportesFondoMes=(data.fondo.aportes||[]).filter((a)=>monthKey(a.fecha)===currentMonth).reduce((acc,a)=>acc+parseNum(a.monto),0);
+      const aportesFondoMes=fondoMovimientosMes(currentMonth).reduce((acc,item)=>acc+(item.tipo==='retiro'?-item.monto:item.monto),0);
       const cuotasMes=activeInstallmentsForMonth(currentMonth).reduce((acc,item)=>acc+item.montoCuota,0),egresosMes=gastosMes+inversionesMes+aportesFondoMes,saldo=ingresosMes-egresosMes,fondoMeta=parseNum(data.fondo.basicos)*6,fondoPct=fondoMeta?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/fondoMeta*100)):0;
       return{ingresosMes,gastosMes,inversionesMes,aportesFondoMes,egresosMes,cuotasMes,saldo,fondoMeta,fondoPct};
     }
@@ -1652,8 +1695,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
       document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
       $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
-      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);data.fondo.aportes.unshift({id:uid(),monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
-      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-parseNum(aporte.monto));data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;const monto=parseNum(aporte.monto);if((aporte.tipo||'aporte')==='retiro')data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;else data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-monto);data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
       $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
       $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
@@ -1695,6 +1739,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       resetMovimientoForm();
       if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
       if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
+      if($('#fondoRetiroFecha'))$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);
     }
     function registerServiceWorker(){
       if(!('serviceWorker' in navigator))return;
@@ -1941,35 +1986,34 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return `Puedo ayudarte con cierre de mes, cuotas, presupuestos y ahorro. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     function renderInicio(){
-      const metrics=deriveMetrics(),alerts=autoAlerts(),projection=deriveMonthProjection(),reminders=reminderRows(6);
-      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const metrics=deriveMetrics(),alerts=autoAlerts(),reminders=reminderRows(6);
       const cutSuggestions=deriveCutSuggestions();
       const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
       const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const planesActivos=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada').slice(0,4);
+      const fondoMes=fondoMovimientosMes(currentMonth);
+      const fondoResumen={aportes:fondoMes.filter((item)=>item.tipo!=='retiro').reduce((acc,item)=>acc+item.monto,0),retiros:fondoMes.filter((item)=>item.tipo==='retiro').reduce((acc,item)=>acc+item.monto,0)};
       const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
       return sectionTemplate('inicio',`
         <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.egresosMes)} salidas totales</span></div></div>
-        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>Mas ${fmtMoney(metrics.inversionesMes+metrics.aportesFondoMes)} entre inversion y fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>${fmtMoney(metrics.inversionesMes)} invertidos y ${fmtMoney(fondoResumen.aportes)} enviados al fondo</span></div></div>
         <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
         <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
         <div class="medium card"><div class="card-head"><h2>Alertas automaticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
         <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Ultimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
         <div class="large card">
-          <div class="card-head"><h2>Panorama del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
-          <div class="status ${projection.estado}">${escapeHTML(projection.mensaje)}</div>
-          <div class="hint" style="margin-top:10px">Una lectura simple de como venis: cuanto ingreso cargaste, cuanto ya salio, cuanto todavia podria salir y con cuanto cerrarias el mes.</div>
-          <div class="inline-fields" style="margin-top:12px">
-            <div class="list-item"><div><strong>Ingreso del mes</strong><span>Lo que cargaste como ingreso</span></div><div><strong>${fmtMoney(projection.ingresosMes)}</strong></div></div>
-            <div class="list-item"><div><strong>Ya salio</strong><span>Gastos reales, inversiones y fondo</span></div><div><strong>${fmtMoney(projection.yaComprometido)}</strong></div></div>
-            <div class="list-item"><div><strong>Falta salir</strong><span>Resto del mes, planes y recordatorios</span></div><div><strong>${fmtMoney(pendingProjection)}</strong></div></div>
-            <div class="list-item"><div><strong>Como cerrarias hoy</strong><span>${projection.diasRestantes} dias para cerrar el mes</span></div><div><strong>${fmtMoney(projection.cierreEstimado)}</strong></div></div>
+          <div class="card-head"><h2>Radar del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="inline-fields">
+            <div class="list-item"><div><strong>Categorias que mas pesan</strong><span>${topSpending.length?'Lo que mas te esta consumiendo este mes':'Todavia no hay gastos cargados'}</span></div><div><strong>${topSpending.length}</strong></div></div>
+            <div class="list-item"><div><strong>Donde ajustar</strong><span>${cutSuggestions.length?'Sugerencias automaticas de recorte':'Sin recortes urgentes por ahora'}</span></div><div><strong>${cutSuggestions.length}</strong></div></div>
+            <div class="list-item"><div><strong>Compras planeadas activas</strong><span>${planesActivos.length?'Pendientes o reprogramadas':'Nada pendiente'}</span></div><div><strong>${planesActivos.length}</strong></div></div>
+            <div class="list-item"><div><strong>Movimiento del fondo</strong><span>${fmtMoney(fondoResumen.aportes)} entraron · ${fmtMoney(fondoResumen.retiros)} salieron</span></div><div><strong>${fmtMoney(fondoResumen.aportes-fondoResumen.retiros)}</strong></div></div>
           </div>
           <div class="list" style="margin-top:12px">
-            <div class="list-item"><div><strong>Ingreso comprometido</strong><span>Parte del ingreso ya tomada por el mes</span></div><div><strong>${projection.comprometidoPct}%</strong></div></div>
-            <div class="list-item"><div><strong>Margen para decidir</strong><span>Lo mas libre que te queda hoy</span></div><div><strong>${fmtMoney(projection.libreReal)}</strong></div></div>
+            ${topSpending.length?topSpending.map(([cat,total],index)=>`<div class="list-item"><div><strong>${index+1}. ${escapeHTML(cat)}</strong><span>${escapeHTML(monthLabel(currentMonth))}</span></div><div><strong>${fmtMoney(total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay categorias con gasto para mostrar.</div>'}
           </div>
           <div class="list" style="margin-top:12px">
-            <div class="list-item"><div><strong>Donde podrias ajustar</strong><span>Categorias que hoy conviene mirar primero</span></div><div><strong>${cutSuggestions.length?cutSuggestions.length:'0'}</strong></div></div>
             ${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que sobresalga como recorte urgente.</div>'}
           </div>
         </div>
@@ -1984,6 +2028,82 @@ alter publication supabase_realtime add table public.mf_states;</div>
         </div>
         <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
       `);
+    }
+    function renderInicio(){
+      const metrics=deriveMetrics(),alerts=autoAlerts(),reminders=reminderRows(6);
+      const cutSuggestions=deriveCutSuggestions();
+      const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const planesActivos=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada').slice(0,4);
+      const fondoMes=fondoMovimientosMes(currentMonth);
+      const fondoResumen={aportes:fondoMes.filter((item)=>item.tipo!=='retiro').reduce((acc,item)=>acc+item.monto,0),retiros:fondoMes.filter((item)=>item.tipo==='retiro').reduce((acc,item)=>acc+item.monto,0)};
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos vs ${fmtMoney(metrics.egresosMes)} salidas totales</span></div></div>
+        <div class="small"><div class="kpi"><span>Gastos del mes</span><strong>${fmtMoney(metrics.gastosMes)}</strong><span>${fmtMoney(metrics.inversionesMes)} invertidos y ${fmtMoney(fondoResumen.aportes)} enviados al fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automaticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Resumen mensual</h2><span class="pill">Ultimos 3 meses</span></div><div class="list">${resumen.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(monthLabel(item.key))}</strong><span class="muted">Ingresos ${fmtMoney(item.ingresos)}</span></div><div><strong>${fmtMoney(item.gastos)}</strong><span class="muted">Gastos</span></div></div>`).join('')}</div></div>
+        <div class="large card">
+          <div class="card-head"><h2>Radar del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div>
+          <div class="inline-fields">
+            <div class="list-item"><div><strong>Categorias que mas pesan</strong><span>${topSpending.length?'Lo que mas te esta consumiendo este mes':'Todavia no hay gastos cargados'}</span></div><div><strong>${topSpending.length}</strong></div></div>
+            <div class="list-item"><div><strong>Donde ajustar</strong><span>${cutSuggestions.length?'Sugerencias automaticas de recorte':'Sin recortes urgentes por ahora'}</span></div><div><strong>${cutSuggestions.length}</strong></div></div>
+            <div class="list-item"><div><strong>Compras planeadas activas</strong><span>${planesActivos.length?'Pendientes o reprogramadas':'Nada pendiente'}</span></div><div><strong>${planesActivos.length}</strong></div></div>
+            <div class="list-item"><div><strong>Movimiento del fondo</strong><span>${fmtMoney(fondoResumen.aportes)} entraron · ${fmtMoney(fondoResumen.retiros)} salieron</span></div><div><strong>${fmtMoney(fondoResumen.aportes-fondoResumen.retiros)}</strong></div></div>
+          </div>
+          <div class="list" style="margin-top:12px">${topSpending.length?topSpending.map(([cat,total],index)=>`<div class="list-item"><div><strong>${index+1}. ${escapeHTML(cat)}</strong><span>${escapeHTML(monthLabel(currentMonth))}</span></div><div><strong>${fmtMoney(total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay categorias con gasto para mostrar.</div>'}</div>
+          <div class="list" style="margin-top:12px">${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que sobresalga como recorte urgente.</div>'}</div>
+        </div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Proximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Recordatorios y vencimientos</h2><span class="pill">Agenda</span></div><div class="list">${reminders.length?reminders.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div><div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div><div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div><div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresa un monto para convertir usando dolar blue venta/compra.':'No disponible'}</div></div></div>
+        <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderFondo(){
+      const metaTotal=parseNum(data.fondo.basicos)*6,progress=metaTotal?Math.min(100,Math.round(parseNum(data.fondo.ahorrado)/metaTotal*100)):0;
+      const cuotasPendientes=data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1).map((m)=>({id:m.id,detalle:m.detalle||m.categoria,pendiente:parseNum(m.monto)/parseNum(m.cuotas)*remainingInstallments(m)}));
+      const movimientosFondo=[...(data.fondo.aportes||[])].map((item)=>({...item,tipo:item.tipo==='retiro'?'retiro':'aporte',monto:parseNum(item.monto)})).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+      return sectionTemplate('fondo',`
+        <div class="medium card"><div class="card-head"><h2>Fondo de emergencia</h2><span class="pill">Meta 6 meses</span></div><form id="fondoForm" class="grid"><div class="medium"><label for="fondoBasicos">Gastos basicos mensuales</label><input id="fondoBasicos" type="number" min="0" step="0.01" value="${parseNum(data.fondo.basicos)}" /></div><div class="medium"><label for="fondoAhorrado">Monto ya ahorrado</label><input id="fondoAhorrado" type="number" min="0" step="0.01" value="${parseNum(data.fondo.ahorrado)}" /></div><div class="large"><button type="submit">Guardar fondo</button></div></form><div class="hint" style="margin-top:12px">Meta ideal: ${fmtMoney(metaTotal)}.</div><div class="progress" style="margin-top:10px"><span style="width:${progress}%"></span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Mover plata del fondo</h2><span class="pill">Entrada y salida</span></div><form id="fondoAporteForm" class="grid"><div class="medium"><label for="fondoAporteMonto">Monto</label><input id="fondoAporteMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="fondoAporteFecha">Fecha</label><input id="fondoAporteFecha" type="date" required /></div><div class="large"><label for="fondoAporteDetalle">Detalle</label><input id="fondoAporteDetalle" placeholder="ej. Transferencia al fondo" /></div><div class="large"><button type="submit">Registrar aporte</button></div></form><form id="fondoRetiroForm" class="grid" style="margin-top:14px"><div class="medium"><label for="fondoRetiroMonto">Monto a retirar</label><input id="fondoRetiroMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="fondoRetiroFecha">Fecha</label><input id="fondoRetiroFecha" type="date" required /></div><div class="large"><label for="fondoRetiroDetalle">Detalle</label><input id="fondoRetiroDetalle" placeholder="ej. Emergencia de salud" /></div><div class="large"><button type="submit" class="btn-soft">Registrar retiro</button></div></form><div class="list" style="margin-top:12px">${movimientosFondo.map((mov)=>`<div class="list-item"><div><strong>${escapeHTML(mov.detalle||(mov.tipo==='retiro'?'Retiro del fondo':'Aporte al fondo'))}</strong><span>${fmtDate(mov.fecha)} · ${mov.tipo==='retiro'?'Retiro':'Aporte'}</span></div><div><strong>${mov.tipo==='retiro'?'- ':''}${fmtMoney(mov.monto)}</strong><button type="button" class="btn-danger" data-del-fondo-aporte="${mov.id}" style="margin-top:8px">Eliminar</button></div></div>`).join('')||'<div class="status ok">Todavia no registraste movimientos del fondo.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas pendientes</h2><span class="pill">Impacto acumulado</span></div><div class="list">${cuotasPendientes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong></div><div><strong>${fmtMoney(item.pendiente)}</strong></div></div>`).join('')||'<div class="status ok">No hay saldos pendientes en cuotas.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Metas de ahorro</h2><span class="pill">${data.metas.length} activas</span></div><form id="metaForm" class="grid"><div class="medium"><label for="metaNombre">Nombre</label><input id="metaNombre" required /></div><div class="medium"><label for="metaObjetivo">Monto objetivo</label><input id="metaObjetivo" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaActual">Monto actual</label><input id="metaActual" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="metaFecha">Fecha limite</label><input id="metaFecha" type="date" required /></div><div class="large"><button type="submit">Guardar meta</button></div></form><div class="list" style="margin-top:14px">${data.metas.map((meta)=>{const objetivo=parseNum(meta.objetivo),actual=parseNum(meta.actual),pct=objetivo?Math.min(100,Math.round(actual/objetivo*100)):0;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const monthlyNeed=Math.max(0,objetivo-actual)/months;return`<div class="list-item"><div style="flex:1"><strong>${escapeHTML(meta.nombre)}</strong><div class="hint">${fmtMoney(actual)} de ${fmtMoney(objetivo)} · limite ${fmtDate(meta.fechaLimite)}</div><div class="progress" style="margin-top:10px"><span style="width:${pct}%"></span></div><div class="hint" style="margin-top:8px">Necesitas ahorrar ${fmtMoney(monthlyNeed)} por mes para llegar.</div></div><div><button type="button" class="btn-danger" data-del-meta="${meta.id}">Eliminar</button></div></div>`;}).join('')||'<div class="status ok">Todavia no hay metas creadas.</div>'}</div></div>
+      `);
+    }
+    function buildCalendarEvents(year,monthIndex){
+      const events=[];
+      data.movimientos.forEach((m)=>{const day=new Date(m.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} - ${m.categoria} - ${fmtMoney(parseNum(m.monto))}`});});
+      data.inversiones.forEach((i)=>{const day=new Date(i.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Inversion - ${i.tipo} - ${fmtMoney(parseNum(i.monto))}`});});
+      reminderRows().forEach((r)=>{const day=new Date(r.fecha+'T00:00:00');if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio - ${r.titulo} - ${fmtMoney(parseNum(r.monto))}`});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} - ${m.detalle||m.categoria} - ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`});}));
+      return events;
+    }
+    function renderCalendarioSection(){
+      const title=new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'}),rows=reminderRows();
+      return sectionTemplate('calendario',`
+        <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid">
+          <div class="medium"><label for="remTitulo">Titulo</label><input id="remTitulo" required placeholder="ej. Tarjeta Visa" /></div>
+          <div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div>
+          <div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div>
+          <div class="medium"><label for="remCategoria">Categoria</label><select id="remCategoria"></select></div>
+          <div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div>
+          <div class="large"><button type="submit">Guardar recordatorio</button></div>
+        </form></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.fecha)}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span><div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no hay recordatorios cargados.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="calendar" id="calendarGrid"></div></div>
+      `);
+    }
+    function renderCalendario(){
+      const root=$('#calendarGrid');if(!root)return;
+      const now=new Date(),year=now.getFullYear(),monthIndex=now.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'],cells=[];
+      weekDays.forEach((day)=>cells.push(`<div class="cal-head">${day}</div>`));for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
+      for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
+      root.innerHTML=cells.join('');
     }
     function getMarketQuote(keys){
       if(marketState.status!=='ok')return null;
