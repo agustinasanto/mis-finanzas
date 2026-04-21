@@ -156,6 +156,11 @@
     .cal-day.empty{opacity:.35}
     .day-number{font-weight:700;margin-bottom:6px}
     .event{display:block;margin-top:6px;padding:5px 7px;border-radius:12px;background:#fff;border:1px solid var(--line);font-size:.8rem}
+    .event.event-reminder{background:#fff8fc}
+    .event.event-card-due{background:#fff4e8;border-color:#f2d7b7}
+    .event.event-card-close{background:#fff7fb;border-color:#efd8e4}
+    .event.event-installment{background:#fff2f7;border-color:#f0cddd}
+    .event.event-recurring{background:#f8fff9;border-color:#d9f0df}
     .chart-shell{background:linear-gradient(180deg,#fffafd,#fff0f6);border:1px solid var(--line);border-radius:22px;padding:12px;position:relative;overflow:hidden;box-shadow:var(--glow)}
     .chart-shell::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at top right,rgba(231,141,183,.16),transparent 40%),linear-gradient(120deg,transparent 0%,rgba(255,255,255,.4) 45%,transparent 100%);pointer-events:none;animation:sheen 8s ease-in-out infinite}
     .chart-scroll{position:relative;max-height:420px;overflow:auto;padding-right:2px}
@@ -363,6 +368,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
+    DEF.recurrentes=[];
+    DEF.tarjetas=[];
     DEF.fondo.aportes=[];
     let data=clone(DEF),
         liveConfig=null,
@@ -382,6 +389,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         cuotasViewMonth=currentMonth,
         cuotasManualMonth=false,
         calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1),
+        movementFilters={query:'',tipo:'',categoria:'',desde:'',hasta:''},
         blueState={status:'idle',compra:null,venta:null,fecha:'',fetchedAt:null},
         marketState={status:'idle',quotes:{},updatedAt:'',fetchedAt:null},
         chartAnimationFrame=null;
@@ -655,6 +663,26 @@ alter publication supabase_realtime add table public.mf_states;</div>
         ahorrado:parseNum(plan?.ahorrado)
       })):[];
       next.recordatorios=Array.isArray(src.recordatorios)?src.recordatorios:[];
+      next.recurrentes=Array.isArray(src.recurrentes)?src.recurrentes.map((item)=>({
+        id:item?.id||uid(),
+        nombre:String(item?.nombre||''),
+        tipo:String(item?.tipo||'gasto'),
+        categoria:String(item?.categoria||'Otros'),
+        monto:parseNum(item?.monto),
+        dia:Math.max(1,Math.min(31,parseNum(item?.dia)||1)),
+        cuenta:String(item?.cuenta||''),
+        detalle:String(item?.detalle||''),
+        activo:item?.activo!==false
+      })):[];
+      next.tarjetas=Array.isArray(src.tarjetas)?src.tarjetas.map((item)=>({
+        id:item?.id||uid(),
+        nombre:String(item?.nombre||''),
+        cierreDia:Math.max(1,Math.min(31,parseNum(item?.cierreDia)||1)),
+        venceDia:Math.max(1,Math.min(31,parseNum(item?.venceDia)||1)),
+        monto:parseNum(item?.monto),
+        notas:String(item?.notas||''),
+        activo:item?.activo!==false
+      })):[];
       next.chat=Array.isArray(src.chat)?src.chat:[];
       next.auth=src.auth&&typeof src.auth==='object'?{
         username:String(src.auth.username||''),
@@ -1039,6 +1067,179 @@ alter publication supabase_realtime add table public.mf_states;</div>
         suggestions
       };
     }
+    function monthDateFromDay(month,day){
+      const [year,mon]=monthKey(month).split('-').map(Number);
+      const maxDay=new Date(year,mon,0).getDate();
+      return new Date(year,mon-1,Math.max(1,Math.min(maxDay,parseNum(day)||1)));
+    }
+    function recurringRows(){
+      return Array.isArray(data.recurrentes)?data.recurrentes.filter((item)=>item&&item.id):[];
+    }
+    function cardStatementRows(month=currentMonth){
+      return (Array.isArray(data.tarjetas)?data.tarjetas:[]).filter((item)=>item&&item.id&&item.activo!==false).map((item)=>{
+        const cierreDate=monthDateFromDay(month,item.cierreDia||1);
+        const venceDate=monthDateFromDay(month,item.venceDia||1);
+        return{
+          ...item,
+          month,
+          cierreDate,
+          venceDate,
+          cierreFecha:cierreDate.toISOString().slice(0,10),
+          vencimientoFecha:venceDate.toISOString().slice(0,10)
+        };
+      }).sort((a,b)=>a.venceDate-b.venceDate);
+    }
+    function hasRecurringApplied(item,month=currentMonth){
+      return data.movimientos.some((mov)=>mov.recurrenteId===item.id&&monthKey(mov.fecha)===month);
+    }
+    function pendingRecurringTemplates(month=currentMonth){
+      return recurringRows().filter((item)=>item.activo!==false&&!hasRecurringApplied(item,month));
+    }
+    function applyRecurringTemplate(item,month=currentMonth){
+      if(!item||hasRecurringApplied(item,month))return false;
+      const fecha=monthDateFromDay(month,item.dia||1).toISOString().slice(0,10);
+      data.movimientos.push({
+        id:uid(),
+        recurrenteId:item.id,
+        tipo:item.tipo||'gasto',
+        monto:parseNum(item.monto),
+        fecha,
+        categoria:item.categoria||'Otros',
+        forma:'contado',
+        cuenta:String(item.cuenta||''),
+        cuotas:1,
+        cuotaActual:1,
+        inicioCobro:month,
+        detalle:String(item.detalle||item.nombre||'Recurrente')
+      });
+      return true;
+    }
+    function applyPendingRecurring(month=currentMonth){
+      let created=0;
+      pendingRecurringTemplates(month).forEach((item)=>{if(applyRecurringTemplate(item,month))created+=1;});
+      return created;
+    }
+    function upcomingAgendaRows(limit=8){
+      const reminders=reminderRows().map((item)=>({
+        ...item,
+        source:'recordatorio',
+        when:String(item.fecha||''),
+        label:item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'
+      }));
+      const cards=[];
+      for(let offset=0;offset<2;offset++){
+        cardStatementRows(addMonths(currentMonth,offset)).forEach((item)=>{
+          cards.push({
+            id:`card_due_${item.id}_${item.month}`,
+            titulo:`Pagar ${item.nombre}`,
+            categoria:'Tarjeta',
+            monto:parseNum(item.monto),
+            when:item.vencimientoFecha,
+            notas:item.notas||'',
+            estado:reminderState({fecha:item.vencimientoFecha}),
+            source:'tarjeta',
+            label:'Resumen'
+          });
+        });
+      }
+      return [...reminders,...cards].sort((a,b)=>String(a.when).localeCompare(String(b.when))).slice(0,limit);
+    }
+    function recentCategoryAverage(cat,count=2){
+      const months=Array.from({length:count},(_,idx)=>addMonths(currentMonth,-(idx+1)));
+      if(!months.length)return 0;
+      return months.reduce((acc,month)=>acc+parseNum(gastosPorCategoriaMes(month)[cat]),0)/months.length;
+    }
+    function deriveMonthComparison(){
+      const currentKey=currentMonth,prevKey=addMonths(currentMonth,-1);
+      const currentIngresos=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===currentKey).reduce((acc,m)=>acc+parseNum(m.monto),0);
+      const prevIngresos=data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===prevKey).reduce((acc,m)=>acc+parseNum(m.monto),0);
+      const currentGastos=Object.values(gastosPorCategoriaMes(currentKey)).reduce((acc,n)=>acc+n,0);
+      const prevGastos=Object.values(gastosPorCategoriaMes(prevKey)).reduce((acc,n)=>acc+n,0);
+      const cats=[...new Set([...Object.keys(gastosPorCategoriaMes(currentKey)),...Object.keys(gastosPorCategoriaMes(prevKey))])];
+      const deltas=cats.map((cat)=>({
+        cat,
+        current:parseNum(gastosPorCategoriaMes(currentKey)[cat]),
+        previous:parseNum(gastosPorCategoriaMes(prevKey)[cat]),
+        diff:parseNum(gastosPorCategoriaMes(currentKey)[cat])-parseNum(gastosPorCategoriaMes(prevKey)[cat])
+      })).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+      return{currentKey,prevKey,ingresosDiff:currentIngresos-prevIngresos,gastosDiff:currentGastos-prevGastos,topDelta:deltas[0]||null,topSavings:deltas.filter((item)=>item.diff<0)[0]||null};
+    }
+    function deriveVariablePocket(){
+      const rows=presupuestoRows().filter((row)=>!isFixedCategory(row.cat));
+      const budget=rows.reduce((acc,row)=>acc+parseNum(row.presupuesto),0);
+      const spent=rows.reduce((acc,row)=>acc+parseNum(row.gastado),0);
+      return{budget,spent,available:Math.max(0,budget-spent)};
+    }
+    function filteredMovimientos(){
+      const query=String(movementFilters.query||'').trim().toLowerCase();
+      return [...data.movimientos].filter((mov)=>{
+        if(movementFilters.tipo&&mov.tipo!==movementFilters.tipo)return false;
+        if(movementFilters.categoria&&mov.categoria!==movementFilters.categoria)return false;
+        if(movementFilters.desde&&String(mov.fecha)<String(movementFilters.desde))return false;
+        if(movementFilters.hasta&&String(mov.fecha)>String(movementFilters.hasta))return false;
+        if(query){
+          const haystack=[mov.detalle,mov.categoria,mov.cuenta,mov.tipo].join(' ').toLowerCase();
+          if(!haystack.includes(query))return false;
+        }
+        return true;
+      }).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+    }
+    function csvCell(value){
+      const text=String(value??'');
+      return /[",\n;]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;
+    }
+    function downloadFile(name,type,content){
+      const blob=new Blob([content],{type});
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=url;
+      link.download=name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1500);
+    }
+    function exportJsonBackup(){
+      downloadFile(`mis-finanzas-backup-${currentMonth}.json`,'application/json;charset=utf-8',JSON.stringify(data,null,2));
+    }
+    function exportMovimientosCsv(){
+      const header=['Fecha','Tipo','Categoria','Forma','Cuenta','Detalle','Monto'];
+      const rows=filteredMovimientos().map((mov)=>[mov.fecha,mov.tipo,mov.categoria,mov.forma||'',mov.cuenta||'',mov.detalle||'',parseNum(mov.monto)]);
+      const csv=[header,...rows].map((row)=>row.map(csvCell).join(',')).join('\n');
+      downloadFile(`mis-finanzas-movimientos-${currentMonth}.csv`,'text/csv;charset=utf-8',csv);
+    }
+    function autoAlerts(){
+      const metrics=deriveMetrics(),alerts=[];
+      const dueSoon=upcomingAgendaRows(10).filter((item)=>item.source==='tarjeta'||item.source==='recordatorio').filter((item)=>{
+        if(item.estado==='hecho')return false;
+        const due=new Date(`${item.when}T00:00:00`);
+        const today=new Date();
+        const diff=Math.ceil((due-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);
+        return diff<=5;
+      });
+      if(metrics.cuotasMes>600000)alerts.push({type:'warn',text:`Este mes tenes ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas.`});
+      presupuestoRows().forEach((row)=>{if(row.presupuesto&&row.gastado>row.presupuesto)alerts.push({type:'err',text:`${row.cat} ya supero el presupuesto mensual por ${fmtMoney(row.gastado-row.presupuesto)}.`});});
+      const supermercadoAvg=recentCategoryAverage('Supermercado',2);
+      const supermercadoActual=parseNum(gastosPorCategoriaMes(currentMonth).Supermercado);
+      if(supermercadoActual>0&&supermercadoAvg>0&&supermercadoActual>supermercadoAvg*1.18)alerts.push({type:'warn',text:`Supermercado viene ${fmtMoney(supermercadoActual-supermercadoAvg)} arriba de tu promedio reciente.`});
+      dueSoon.forEach((item)=>{
+        const due=new Date(`${item.when}T00:00:00`);
+        const today=new Date();
+        const diff=Math.max(0,Math.ceil((due-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000));
+        alerts.push({type:item.estado==='vencido'?'err':'warn',text:`${item.source==='tarjeta'?'Se viene el resumen':'Atencion con'} "${item.titulo}" ${item.estado==='vencido'?'ya vencio':`en ${diff} dias`} por ${fmtMoney(item.monto)}.`});
+      });
+      const pendingRecurring=pendingRecurringTemplates(currentMonth);
+      if(pendingRecurring.length)alerts.push({type:'warn',text:`Tenes ${pendingRecurring.length} recurrentes todavia sin aplicar en ${monthLabel(currentMonth)}.`});
+      const variablePocket=deriveVariablePocket();
+      if(variablePocket.budget>0&&variablePocket.spent>variablePocket.budget*0.8)alerts.push({type:'warn',text:`Ya consumiste ${fmtMoney(variablePocket.spent)} del bloque variable. Te quedan ${fmtMoney(variablePocket.available)} para el resto del mes.`});
+      data.metas.forEach((meta)=>{const target=parseNum(meta.objetivo),actual=parseNum(meta.actual);if(!target||!meta.fechaLimite)return;const today=new Date(),limit=new Date(meta.fechaLimite+'T00:00:00');const months=Math.max(1,(limit.getFullYear()-today.getFullYear())*12+(limit.getMonth()-today.getMonth())+1);const need=Math.max(0,target-actual)/months;const actualPct=target?Math.round(actual/target*100):0;const totalSpan=Math.max(1,(limit-new Date(today.getFullYear(),today.getMonth(),1))/(1000*60*60*24*30));const remaining=Math.max(0,(limit-today)/(1000*60*60*24*30));const expectedPct=Math.max(0,Math.min(100,Math.round((1-(remaining/totalSpan))*100)));if(actualPct+8<expectedPct)alerts.push({type:'warn',text:`La meta "${meta.nombre}" viene atrasada. Para llegar necesitas ahorrar ${fmtMoney(need)} por mes.`});});
+      if(!alerts.length)alerts.push({type:'ok',text:'Sin alertas urgentes. El mes viene bajo control.'});
+      return alerts.slice(0,6);
+    }
+    function populateCategorySelects(){
+      const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');
+      ['#movCategoria','#quickCategoria','#remCategoria','#recCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});
+    }
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
       const metrics=deriveMetrics();
@@ -1063,6 +1264,232 @@ alter publication supabase_realtime add table public.mf_states;</div>
         return `Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en categoria Ahorro, ${fmtMoney(metrics.aportesFondoMes)} como movimiento neto del fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
       }
       return `Puedo ayudarte con cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes.`;
+    }
+    function populateCategorySelects(){
+      const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');
+      ['#movCategoria','#quickCategoria','#remCategoria','#recCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});
+    }
+    function populateCategorySelects(){
+      const options=data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('');
+      ['#movCategoria','#quickCategoria','#remCategoria','#recCategoria'].forEach((sel)=>{$(sel)&&($(sel).innerHTML=options);});
+    }
+    function renderInicio(){
+      const metrics=deriveMetrics(),alerts=autoAlerts(),agenda=upcomingAgendaRows(6);
+      const cutSuggestions=deriveCutSuggestions();
+      const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const planesActivos=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada').slice(0,4);
+      const fondoMes=fondoMovimientosMes(currentMonth);
+      const fondoResumen={aportes:fondoMes.filter((item)=>item.tipo!=='retiro').reduce((acc,item)=>acc+item.monto,0),retiros:fondoMes.filter((item)=>item.tipo==='retiro').reduce((acc,item)=>acc+item.monto,0)};
+      const comparison=deriveMonthComparison();
+      const variablePocket=deriveVariablePocket();
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos - ${fmtMoney(metrics.salidasMes)} salidas${metrics.retirosFondoMes?` + ${fmtMoney(metrics.retirosFondoMes)} recuperados del fondo`:''}</span></div></div>
+        <div class="small"><div class="kpi"><span>Salidas reales del mes</span><strong>${fmtMoney(metrics.salidasMes)}</strong><span>${fmtMoney(metrics.gastosMes)} en gastos, ${fmtMoney(metrics.inversionesMes)} invertidos y ${fmtMoney(metrics.aportesFondoMes)} enviados al fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automaticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Comparativa mensual</h2><span class="pill">${escapeHTML(monthLabel(comparison.prevKey))} vs ${escapeHTML(monthLabel(comparison.currentKey))}</span></div><div class="list"><div class="list-item"><div><strong>Ingresos</strong><span>Comparado con el mes anterior</span></div><div><strong>${comparison.ingresosDiff>=0?'+':''}${fmtMoney(comparison.ingresosDiff)}</strong></div></div><div class="list-item"><div><strong>Gastos</strong><span>Comparado con el mes anterior</span></div><div><strong>${comparison.gastosDiff>=0?'+':''}${fmtMoney(comparison.gastosDiff)}</strong></div></div>${comparison.topDelta?`<div class="list-item"><div><strong>Categoria que mas cambio</strong><span>${escapeHTML(comparison.topDelta.cat)}</span></div><div><strong>${comparison.topDelta.diff>=0?'+':''}${fmtMoney(comparison.topDelta.diff)}</strong></div></div>`:''}${comparison.topSavings?`<div class="list-item"><div><strong>Donde bajaste</strong><span>${escapeHTML(comparison.topSavings.cat)}</span></div><div><strong>${fmtMoney(Math.abs(comparison.topSavings.diff))}</strong></div></div>`:''}</div></div>
+        <div class="large card"><div class="card-head"><h2>Radar del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="inline-fields"><div class="list-item"><div><strong>Categorias que mas pesan</strong><span>${topSpending.length?'Lo que mas te esta consumiendo este mes':'Todavia no hay gastos cargados'}</span></div><div><strong>${topSpending.length}</strong></div></div><div class="list-item"><div><strong>Donde ajustar</strong><span>${cutSuggestions.length?'Sugerencias automaticas de recorte':'Sin recortes urgentes por ahora'}</span></div><div><strong>${cutSuggestions.length}</strong></div></div><div class="list-item"><div><strong>Compras planeadas activas</strong><span>${planesActivos.length?'Pendientes o reprogramadas':'Nada pendiente'}</span></div><div><strong>${planesActivos.length}</strong></div></div><div class="list-item"><div><strong>Movimiento del fondo</strong><span>${fmtMoney(fondoResumen.aportes)} aportes · ${fmtMoney(fondoResumen.retiros)} retiros</span></div><div><strong>${fmtMoney(metrics.fondoNetoMes)}</strong></div></div></div><div class="list" style="margin-top:12px">${topSpending.length?topSpending.map(([cat,total],index)=>`<div class="list-item"><div><strong>${index+1}. ${escapeHTML(cat)}</strong><span>${escapeHTML(monthLabel(currentMonth))}</span></div><div><strong>${fmtMoney(total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay categorias con gasto para mostrar.</div>'}</div><div class="list" style="margin-top:12px">${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que sobresalga como recorte urgente.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Disponible variable</h2><span class="pill">Gasto cotidiano</span></div><div class="list"><div class="list-item"><div><strong>Ya gastaste</strong><span>Bloque variable con presupuesto</span></div><div><strong>${fmtMoney(variablePocket.spent)}</strong></div></div><div class="list-item"><div><strong>Te queda</strong><span>Sin romper el presupuesto variable</span></div><div><strong>${fmtMoney(variablePocket.available)}</strong></div></div><div class="list-item"><div><strong>Categoria a frenar primero</strong><span>${cutSuggestions[0]?escapeHTML(cutSuggestions[0].cat):'Sin alerta fuerte'}</span></div><div><span class="muted">${cutSuggestions[0]?escapeHTML(cutSuggestions[0].reason):'Mes ordenado'}</span></div></div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda y vencimientos</h2><span class="pill">Proximos dias</span></div><div class="list">${agenda.length?agenda.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${escapeHTML(item.label)}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Proximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div><div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div><div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div><div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresa un monto para convertir usando dolar blue venta/compra.':'No disponible'}</div></div></div>
+        <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderMovimientos(){
+      const filtered=filteredMovimientos();
+      const recurrentes=recurringRows();
+      const pendingRecurring=pendingRecurringTemplates(currentMonth);
+      return sectionTemplate('movimientos',`
+        <div class="medium card"><div class="card-head"><h2>Cargar movimiento</h2><span class="pill">Alta manual</span></div><form id="movForm" class="grid"><input id="movEditId" type="hidden" /><div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div><div class="medium"><label for="movCategoria">Categoria</label><select id="movCategoria"></select></div><div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div><div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div><div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movCuotaActual">N cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movInicioCobro">Primer mes de cobro</label><input id="movInicioCobro" type="month" /></div><div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div><div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar edicion</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Recurrentes del mes</h2><span class="pill">${pendingRecurring.length} pendientes</span></div><form id="recurringForm" class="grid"><div class="medium"><label for="recNombre">Nombre</label><input id="recNombre" required placeholder="ej. Alquiler" /></div><div class="medium"><label for="recTipo">Tipo</label><select id="recTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="recCategoria">Categoria</label><select id="recCategoria">${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="recMonto">Monto</label><input id="recMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="recDia">Dia del mes</label><input id="recDia" type="number" min="1" max="31" value="${new Date().getDate()}" /></div><div class="medium"><label for="recCuenta">Cuenta</label><input id="recCuenta" placeholder="opcional" /></div><div class="large"><label for="recDetalle">Detalle</label><input id="recDetalle" placeholder="ej. Debito automatico" /></div><div class="large setup-actions"><button type="submit">Guardar recurrente</button><button type="button" class="btn-soft" id="applyRecurringMonth">Aplicar pendientes de ${escapeHTML(monthLabel(currentMonth))}</button></div></form><div class="list" style="margin-top:12px">${recurrentes.length?recurrentes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${escapeHTML(item.tipo)} · dia ${item.dia} · ${escapeHTML(item.categoria)}${item.activo===false?' · pausado':''}</span></div><div style="min-width:240px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-run-recurring="${item.id}">Aplicar</button><button type="button" class="btn-soft" data-toggle-recurring="${item.id}">${item.activo===false?'Activar':'Pausar'}</button><button type="button" class="btn-danger" data-del-recurring="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no hay plantillas recurrentes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categoria" /><button type="submit">Agregar categoria</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Backup y exportacion</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div></div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${filtered.length} de ${data.movimientos.length}</span></div><div class="grid" style="margin-bottom:12px"><div class="medium"><label for="movFilterQuery">Buscar</label><input id="movFilterQuery" value="${escapeHTML(movementFilters.query||'')}" placeholder="detalle, cuenta, categoria..." /></div><div class="medium"><label for="movFilterTipo">Tipo</label><select id="movFilterTipo"><option value="">Todos</option><option value="gasto" ${movementFilters.tipo==='gasto'?'selected':''}>Gasto</option><option value="ingreso" ${movementFilters.tipo==='ingreso'?'selected':''}>Ingreso</option></select></div><div class="medium"><label for="movFilterCategoria">Categoria</label><select id="movFilterCategoria"><option value="">Todas</option>${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}" ${movementFilters.categoria===cat?'selected':''}>${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="movFilterDesde">Desde</label><input id="movFilterDesde" type="date" value="${escapeHTML(movementFilters.desde||'')}" /></div><div class="medium"><label for="movFilterHasta">Hasta</label><input id="movFilterHasta" type="date" value="${escapeHTML(movementFilters.hasta||'')}" /></div><div class="medium" style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" id="clearMovFilters">Limpiar filtros</button></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${filtered.map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos para esos filtros.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderMovimientos(){
+      const filtered=filteredMovimientos();
+      const recurrentes=recurringRows();
+      const pendingRecurring=pendingRecurringTemplates(currentMonth);
+      return sectionTemplate('movimientos',`
+        <div class="medium card"><div class="card-head"><h2>Cargar movimiento</h2><span class="pill">Alta manual</span></div><form id="movForm" class="grid"><input id="movEditId" type="hidden" /><div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div><div class="medium"><label for="movCategoria">Categoria</label><select id="movCategoria"></select></div><div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div><div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div><div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movCuotaActual">N cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movInicioCobro">Primer mes de cobro</label><input id="movInicioCobro" type="month" /></div><div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div><div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar edicion</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Recurrentes del mes</h2><span class="pill">${pendingRecurring.length} pendientes</span></div><form id="recurringForm" class="grid"><div class="medium"><label for="recNombre">Nombre</label><input id="recNombre" required placeholder="ej. Alquiler" /></div><div class="medium"><label for="recTipo">Tipo</label><select id="recTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="recCategoria">Categoria</label><select id="recCategoria"></select></div><div class="medium"><label for="recMonto">Monto</label><input id="recMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="recDia">Dia del mes</label><input id="recDia" type="number" min="1" max="31" value="${new Date().getDate()}" /></div><div class="medium"><label for="recCuenta">Cuenta</label><input id="recCuenta" placeholder="opcional" /></div><div class="large"><label for="recDetalle">Detalle</label><input id="recDetalle" placeholder="ej. Debito automatico" /></div><div class="large setup-actions"><button type="submit">Guardar recurrente</button><button type="button" class="btn-soft" id="applyRecurringMonth">Aplicar pendientes de ${escapeHTML(monthLabel(currentMonth))}</button></div></form><div class="list" style="margin-top:12px">${recurrentes.length?recurrentes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${escapeHTML(item.tipo)} · dia ${item.dia} · ${escapeHTML(item.categoria)}${item.activo===false?' · pausado':''}</span></div><div style="min-width:240px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-run-recurring="${item.id}">Aplicar</button><button type="button" class="btn-soft" data-toggle-recurring="${item.id}">${item.activo===false?'Activar':'Pausar'}</button><button type="button" class="btn-danger" data-del-recurring="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no hay plantillas recurrentes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categoria" /><button type="submit">Agregar categoria</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Backup y exportacion</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div></div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${filtered.length} de ${data.movimientos.length}</span></div><div class="grid" style="margin-bottom:12px"><div class="medium"><label for="movFilterQuery">Buscar</label><input id="movFilterQuery" value="${escapeHTML(movementFilters.query||'')}" placeholder="detalle, cuenta, categoria..." /></div><div class="medium"><label for="movFilterTipo">Tipo</label><select id="movFilterTipo"><option value="">Todos</option><option value="gasto" ${movementFilters.tipo==='gasto'?'selected':''}>Gasto</option><option value="ingreso" ${movementFilters.tipo==='ingreso'?'selected':''}>Ingreso</option></select></div><div class="medium"><label for="movFilterCategoria">Categoria</label><select id="movFilterCategoria"><option value="">Todas</option>${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}" ${movementFilters.categoria===cat?'selected':''}>${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="movFilterDesde">Desde</label><input id="movFilterDesde" type="date" value="${escapeHTML(movementFilters.desde||'')}" /></div><div class="medium"><label for="movFilterHasta">Hasta</label><input id="movFilterHasta" type="date" value="${escapeHTML(movementFilters.hasta||'')}" /></div><div class="medium" style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" id="clearMovFilters">Limpiar filtros</button></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${filtered.map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos para esos filtros.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function buildCalendarEvents(year,monthIndex){
+      const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`;
+      const events=[];
+      data.movimientos.forEach((m)=>{const day=new Date(`${m.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} - ${m.categoria} - ${fmtMoney(parseNum(m.monto))}`,className:m.recurrenteId?'event-recurring':''});});
+      data.inversiones.forEach((i)=>{const day=new Date(`${i.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Inversion - ${i.tipo} - ${fmtMoney(parseNum(i.monto))}`,className:''});});
+      reminderRows().forEach((r)=>{const day=new Date(`${r.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio - ${r.titulo} - ${fmtMoney(parseNum(r.monto))}`,className:'event-reminder'});});
+      cardStatementRows(month).forEach((card)=>{events.push({day:card.cierreDate.getDate(),text:`Cierra ${card.nombre}${card.notas?` - ${card.notas}`:''}`,className:'event-card-close'});events.push({day:card.venceDate.getDate(),text:`Vence ${card.nombre} - ${fmtMoney(parseNum(card.monto))}`,className:'event-card-due'});});
+      pendingRecurringTemplates(month).forEach((item)=>{const date=monthDateFromDay(month,item.dia||1);events.push({day:date.getDate(),text:`Recurrente pendiente - ${item.nombre} - ${fmtMoney(parseNum(item.monto))}`,className:'event-recurring'});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} - ${m.detalle||m.categoria} - ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`,className:'event-installment'});}));
+      return events;
+    }
+    function renderCalendarioSection(){
+      const monthKeyView=monthKey(calendarCursor),title=monthLabel(monthKeyView),rows=upcomingAgendaRows(12),cards=cardStatementRows(monthKeyView);
+      return sectionTemplate('calendario',`
+        <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid"><div class="medium"><label for="remTitulo">Titulo</label><input id="remTitulo" required placeholder="ej. Expensas" /></div><div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div><div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div><div class="medium"><label for="remCategoria">Categoria</label><select id="remCategoria"></select></div><div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div><div class="large"><button type="submit">Guardar recordatorio</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Resumenes de tarjeta</h2><span class="pill">${cards.length} visibles</span></div><form id="cardForm" class="grid"><div class="medium"><label for="cardNombre">Tarjeta</label><input id="cardNombre" required placeholder="ej. Visa Santander" /></div><div class="medium"><label for="cardMonto">Monto estimado</label><input id="cardMonto" type="number" min="0" step="0.01" placeholder="opcional" /></div><div class="medium"><label for="cardCierre">Dia de cierre</label><input id="cardCierre" type="number" min="1" max="31" value="20" /></div><div class="medium"><label for="cardVence">Dia de vencimiento</label><input id="cardVence" type="number" min="1" max="31" value="10" /></div><div class="large"><label for="cardNotas">Notas</label><input id="cardNotas" placeholder="ej. pagar desde cuenta sueldo" /></div><div class="large"><button type="submit">Guardar resumen</button></div></form><div class="list" style="margin-top:12px">${(Array.isArray(data.tarjetas)?data.tarjetas:[]).length?(Array.isArray(data.tarjetas)?data.tarjetas:[]).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>Cierra dia ${item.cierreDia} · vence dia ${item.venceDia}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:220px;text-align:right"><strong>${fmtMoney(parseNum(item.monto))}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-toggle-card="${item.id}">${item.activo===false?'Activar':'Pausar'}</button><button type="button" class="btn-danger" data-del-card="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no cargaste vencimientos de tarjetas.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.source==='tarjeta'?'Resumen de tarjeta':item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span>${item.source==='recordatorio'?`<div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div>`:''}</div></div>`).join(''):'<div class="status ok">Todavia no hay recordatorios cargados.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="setup-actions" style="margin-top:0;margin-bottom:12px"><button type="button" class="btn-soft" id="calendarPrev">Mes anterior</button><button type="button" class="btn-soft" id="calendarNext">Mes siguiente</button><button type="button" class="btn-soft" id="calendarToday">Ir a hoy</button></div><div class="calendar" id="calendarGrid"></div></div>
+      `);
+    }
+    function renderCalendario(){
+      const root=$('#calendarGrid');if(!root)return;
+      const year=calendarCursor.getFullYear(),monthIndex=calendarCursor.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'],cells=[];
+      weekDays.forEach((day)=>cells.push(`<div class="cal-head">${day}</div>`));
+      for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
+      for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event ${escapeHTML(e.className||'')}">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
+      root.innerHTML=cells.join('');
+    }
+    function bindSectionEvents(){
+      const movForma=$('#movForma');
+      if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
+      $('#movFecha')?.addEventListener('change',()=>{if($('#movForma')?.value==='cuotas'&&!$('#movEditId')?.value)$('#movInicioCobro').value=monthKey($('#movFecha').value);});
+      const quickForma=$('#quickForma');
+      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';$('#quickInicioCobroWrap').style.display=on?'':'none';if(on&&!$('#quickInicioCobro').value)$('#quickInicioCobro').value=currentMonth;};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
+      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();const payload=readMovimientoForm();const index=data.movimientos.findIndex((m)=>m.id===payload.id);if(index>=0)data.movimientos[index]=payload;else data.movimientos.push(payload);resetMovimientoForm();persistAndRender();});
+      $('#movCancelBtn')?.addEventListener('click',()=>resetMovimientoForm());
+      $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
+      document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
+      document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
+      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
+      $('#movFilterQuery')?.addEventListener('change',(event)=>{movementFilters.query=event.target.value;renderAll();});
+      $('#movFilterTipo')?.addEventListener('change',(event)=>{movementFilters.tipo=event.target.value;renderAll();});
+      $('#movFilterCategoria')?.addEventListener('change',(event)=>{movementFilters.categoria=event.target.value;renderAll();});
+      $('#movFilterDesde')?.addEventListener('change',(event)=>{movementFilters.desde=event.target.value;renderAll();});
+      $('#movFilterHasta')?.addEventListener('change',(event)=>{movementFilters.hasta=event.target.value;renderAll();});
+      $('#clearMovFilters')?.addEventListener('click',()=>{movementFilters={query:'',tipo:'',categoria:'',desde:'',hasta:''};renderAll();});
+      $('#exportJsonBtn')?.addEventListener('click',()=>exportJsonBackup());
+      $('#exportCsvBtn')?.addEventListener('click',()=>exportMovimientosCsv());
+      $('#recurringForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recurrentes.push({id:uid(),nombre:$('#recNombre').value.trim(),tipo:$('#recTipo').value,categoria:$('#recCategoria').value,monto:parseNum($('#recMonto').value),dia:Math.max(1,Math.min(31,parseNum($('#recDia').value)||1)),cuenta:$('#recCuenta').value.trim(),detalle:$('#recDetalle').value.trim(),activo:true});event.target.reset();$('#recDia').value=new Date().getDate();persistAndRender();});
+      $('#applyRecurringMonth')?.addEventListener('click',()=>{const created=applyPendingRecurring(currentMonth);sync(created?'ok':'warn',created?`Se aplicaron ${created} recurrentes del mes.`:'No habia recurrentes pendientes para aplicar.');if(created)persistAndRender();});
+      document.querySelectorAll('[data-run-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.runRecurring);if(!item)return;const created=applyRecurringTemplate(item,currentMonth);sync(created?'ok':'warn',created?`Se agrego ${item.nombre} al mes actual.`:`${item.nombre} ya estaba cargado este mes.`);if(created)persistAndRender();}));
+      document.querySelectorAll('[data-toggle-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.toggleRecurring);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{data.recurrentes=data.recurrentes.filter((rec)=>rec.id!==btn.dataset.delRecurring);persistAndRender();}));
+      $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
+      $('#applyMetodoBudgets')?.addEventListener('click',()=>{deriveMetodoBudgetPlan().suggestions.forEach((item)=>{data.presupuestos[item.cat]=item.suggested;});persistAndRender();});
+      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'Metodo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
+      $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
+      $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
+      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
+      $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-plan-save]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planSave);if(!plan)return;const input=$(`[data-plan-save-amount="${btn.dataset.planSave}"]`);const monto=parseNum(input?.value);if(monto<=0)return;plan.ahorrado=parseNum(plan.ahorrado)+monto;if(input)input.value='';persistAndRender();}));
+      document.querySelectorAll('[data-plan-bought]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planBought);if(!plan)return;plan.estado='Comprada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-next]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planNext);if(!plan)return;plan.mes=nextPlanMonth(plan.mes);plan.estado='Reprogramada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-pending]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planPending);if(!plan)return;plan.estado='Pendiente';persistAndRender();}));
+      document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
+      $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
+      document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
+      $('#cardForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.tarjetas.unshift({id:uid(),nombre:$('#cardNombre').value.trim(),monto:parseNum($('#cardMonto').value),cierreDia:Math.max(1,Math.min(31,parseNum($('#cardCierre').value)||1)),venceDia:Math.max(1,Math.min(31,parseNum($('#cardVence').value)||1)),notas:$('#cardNotas').value.trim(),activo:true});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-card]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.tarjetas.find((card)=>card.id===btn.dataset.toggleCard);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-card]').forEach((btn)=>btn.addEventListener('click',()=>{data.tarjetas=data.tarjetas.filter((card)=>card.id!==btn.dataset.delCard);persistAndRender();}));
+      $('#calendarPrev')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);renderAll();});
+      $('#calendarNext')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);renderAll();});
+      $('#calendarToday')?.addEventListener('click',()=>{calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1);renderAll();});
+      $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;const monto=parseNum(aporte.monto);if((aporte.tipo||'aporte')==='retiro')data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;else data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-monto);data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
+      $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
+      $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
+      $('#arsInput')?.addEventListener('input',()=>convertBlue('ars'));
+      $('#usdInput')?.addEventListener('input',()=>convertBlue('usd'));
+    }
+    function assistantReply(prompt){
+      const text=String(prompt||'').toLowerCase();
+      const projection=deriveMonthProjection();
+      const metrics=deriveMetrics();
+      const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
+      const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
+      const cutSuggestions=deriveCutSuggestions();
+      const nextCard=cardStatementRows(currentMonth)[0];
+      if(text.includes('fin de mes')||text.includes('llego'))return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      if(text.includes('venc')||text.includes('tarjeta'))return nextCard?`El proximo resumen cargado es ${nextCard.nombre}, con cierre el ${fmtDate(nextCard.cierreFecha)} y vencimiento el ${fmtDate(nextCard.vencimientoFecha)} por ${fmtMoney(nextCard.monto)}.`:`Todavia no cargaste vencimientos de resumenes de tarjeta. Podes hacerlo desde Calendario.`;
+      if(text.includes('recurrent'))return pendingRecurringTemplates(currentMonth).length?`Tenes ${pendingRecurringTemplates(currentMonth).length} recurrentes pendientes de aplicar en ${monthLabel(currentMonth)}.`:`No hay recurrentes pendientes para este mes.`;
+      if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto'))return deriveMarketAdvice();
+      if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar'))return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
+      if(text.includes('cuota'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga, ahora podes editar la compra desde la pestana Cuotas.`;
+      if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria'))return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
+      if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion'))return `En el metodo mensual, el ahorro ahora toma ahorro libre mas aportes al fondo de emergencia. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en ahorro libre, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro, vencimientos y recurrentes. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
+    }
+    function bindSectionEvents(){
+      const movForma=$('#movForma');
+      if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
+      $('#movFecha')?.addEventListener('change',()=>{if($('#movForma')?.value==='cuotas'&&!$('#movEditId')?.value)$('#movInicioCobro').value=monthKey($('#movFecha').value);});
+      const quickForma=$('#quickForma');
+      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';$('#quickInicioCobroWrap').style.display=on?'':'none';if(on&&!$('#quickInicioCobro').value)$('#quickInicioCobro').value=currentMonth;};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
+      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();const payload=readMovimientoForm();const index=data.movimientos.findIndex((m)=>m.id===payload.id);if(index>=0)data.movimientos[index]=payload;else data.movimientos.push(payload);resetMovimientoForm();persistAndRender();});
+      $('#movCancelBtn')?.addEventListener('click',()=>resetMovimientoForm());
+      $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
+      document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
+      document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
+      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
+      $('#movFilterQuery')?.addEventListener('change',(event)=>{movementFilters.query=event.target.value;renderAll();});
+      $('#movFilterTipo')?.addEventListener('change',(event)=>{movementFilters.tipo=event.target.value;renderAll();});
+      $('#movFilterCategoria')?.addEventListener('change',(event)=>{movementFilters.categoria=event.target.value;renderAll();});
+      $('#movFilterDesde')?.addEventListener('change',(event)=>{movementFilters.desde=event.target.value;renderAll();});
+      $('#movFilterHasta')?.addEventListener('change',(event)=>{movementFilters.hasta=event.target.value;renderAll();});
+      $('#clearMovFilters')?.addEventListener('click',()=>{movementFilters={query:'',tipo:'',categoria:'',desde:'',hasta:''};renderAll();});
+      $('#exportJsonBtn')?.addEventListener('click',()=>exportJsonBackup());
+      $('#exportCsvBtn')?.addEventListener('click',()=>exportMovimientosCsv());
+      $('#recurringForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recurrentes.push({id:uid(),nombre:$('#recNombre').value.trim(),tipo:$('#recTipo').value,categoria:$('#recCategoria').value,monto:parseNum($('#recMonto').value),dia:Math.max(1,Math.min(31,parseNum($('#recDia').value)||1)),cuenta:$('#recCuenta').value.trim(),detalle:$('#recDetalle').value.trim(),activo:true});event.target.reset();$('#recDia').value=new Date().getDate();persistAndRender();});
+      $('#applyRecurringMonth')?.addEventListener('click',()=>{const created=applyPendingRecurring(currentMonth);sync(created?'ok':'warn',created?`Se aplicaron ${created} recurrentes del mes.`:'No habia recurrentes pendientes para aplicar.');if(created)persistAndRender();});
+      document.querySelectorAll('[data-run-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.runRecurring);if(!item)return;const created=applyRecurringTemplate(item,currentMonth);sync(created?'ok':'warn',created?`Se agrego ${item.nombre} al mes actual.`:`${item.nombre} ya estaba cargado este mes.`);if(created)persistAndRender();}));
+      document.querySelectorAll('[data-toggle-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.toggleRecurring);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{data.recurrentes=data.recurrentes.filter((rec)=>rec.id!==btn.dataset.delRecurring);persistAndRender();}));
+      $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
+      $('#applyMetodoBudgets')?.addEventListener('click',()=>{deriveMetodoBudgetPlan().suggestions.forEach((item)=>{data.presupuestos[item.cat]=item.suggested;});persistAndRender();});
+      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'Metodo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
+      $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
+      $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
+      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
+      $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-plan-save]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planSave);if(!plan)return;const input=$(`[data-plan-save-amount="${btn.dataset.planSave}"]`);const monto=parseNum(input?.value);if(monto<=0)return;plan.ahorrado=parseNum(plan.ahorrado)+monto;if(input)input.value='';persistAndRender();}));
+      document.querySelectorAll('[data-plan-bought]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planBought);if(!plan)return;plan.estado='Comprada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-next]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planNext);if(!plan)return;plan.mes=nextPlanMonth(plan.mes);plan.estado='Reprogramada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-pending]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planPending);if(!plan)return;plan.estado='Pendiente';persistAndRender();}));
+      document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
+      $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
+      document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
+      $('#cardForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.tarjetas.unshift({id:uid(),nombre:$('#cardNombre').value.trim(),monto:parseNum($('#cardMonto').value),cierreDia:Math.max(1,Math.min(31,parseNum($('#cardCierre').value)||1)),venceDia:Math.max(1,Math.min(31,parseNum($('#cardVence').value)||1)),notas:$('#cardNotas').value.trim(),activo:true});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-card]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.tarjetas.find((card)=>card.id===btn.dataset.toggleCard);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-card]').forEach((btn)=>btn.addEventListener('click',()=>{data.tarjetas=data.tarjetas.filter((card)=>card.id!==btn.dataset.delCard);persistAndRender();}));
+      $('#calendarPrev')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);renderAll();});
+      $('#calendarNext')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);renderAll();});
+      $('#calendarToday')?.addEventListener('click',()=>{calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1);renderAll();});
+      $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;const monto=parseNum(aporte.monto);if((aporte.tipo||'aporte')==='retiro')data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;else data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-monto);data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
+      $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
+      $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
+      $('#arsInput')?.addEventListener('input',()=>convertBlue('ars'));
+      $('#usdInput')?.addEventListener('input',()=>convertBlue('usd'));
     }
     async function initRealtimeSync(){
       if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
@@ -2497,6 +2924,134 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="large card"><div class="card-head"><h2>Listado de compras planeadas</h2><span class="pill">${plans.length} registradas</span></div><div class="list">${plans.map((p)=>{const costo=parseNum(p.costo),ahorrado=parseNum(p.ahorrado),faltante=Math.max(0,costo-ahorrado),pct=costo?Math.min(100,Math.round(ahorrado/costo*100)):0;return `<div class="card" style="padding:14px;background:var(--panel-soft)"><div class="card-head"><div><h3 style="margin:0">${escapeHTML(p.nombre)}</h3><div class="hint">${escapeHTML(p.estado||'Pendiente')} | ${escapeHTML(p.prioridad)} | ${escapeHTML(p.mes||'-')}</div></div><span class="pill">${fmtMoney(costo)}</span></div><div class="list"><div class="list-item"><div><strong>Ahorro acumulado</strong><span>${fmtMoney(ahorrado)} ahorrados</span></div><div><strong>${fmtMoney(faltante)}</strong><span class="muted">faltan</span></div></div><div style="padding:0 2px"><div class="progress"><span style="width:${pct}%"></span></div></div>${p.notas?`<div class="hint">${escapeHTML(p.notas)}</div>`:''}<div class="inline-fields"><div><label>Monto a sumar</label><input type="number" min="0" step="0.01" data-plan-save-amount="${p.id}" placeholder="Monto" /></div><div style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" data-plan-save="${p.id}">Sumar ahorro</button></div></div><div class="setup-actions">${p.estado!=='Comprada'?`<button type="button" class="btn-ok" data-plan-bought="${p.id}">Compre</button><button type="button" class="btn-soft" data-plan-next="${p.id}">Mes siguiente</button>`:`<button type="button" class="btn-soft" data-plan-pending="${p.id}">Volver a pendiente</button>`}<button type="button" class="btn-danger" data-del-plan="${p.id}">Eliminar</button></div></div></div>`;}).join('')||'<div class="status ok">Sin compras planeadas por ahora.</div>'}</div></div>
       `);
     }
+    function renderInicio(){
+      const metrics=deriveMetrics(),alerts=autoAlerts(),agenda=upcomingAgendaRows(6);
+      const cutSuggestions=deriveCutSuggestions();
+      const resumen=[0,1,2].map((offset)=>{const key=addMonths(currentMonth,-offset);return{key,gastos:Object.values(gastosPorCategoriaMes(key)).reduce((acc,n)=>acc+n,0),ingresos:data.movimientos.filter((m)=>m.tipo==='ingreso'&&monthKey(m.fecha)===key).reduce((acc,m)=>acc+parseNum(m.monto),0)};});
+      const compromisos=activeInstallmentsForMonth(currentMonth).slice(0,4);
+      const topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const planesActivos=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada').slice(0,4);
+      const fondoMes=fondoMovimientosMes(currentMonth);
+      const fondoResumen={aportes:fondoMes.filter((item)=>item.tipo!=='retiro').reduce((acc,item)=>acc+item.monto,0),retiros:fondoMes.filter((item)=>item.tipo==='retiro').reduce((acc,item)=>acc+item.monto,0)};
+      const comparison=deriveMonthComparison();
+      const variablePocket=deriveVariablePocket();
+      const blueInfo=blueState.status==='ok'?`<div class="list-item"><div><strong>Compra</strong><span>${fmtMoney(blueState.compra)}</span></div><div><strong>Venta</strong><span>${fmtMoney(blueState.venta)}</span></div></div>`:`<div class="list-item"><div><strong>No disponible</strong><span class="muted">No pudimos obtener la cotizacion blue.</span></div></div>`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos - ${fmtMoney(metrics.salidasMes)} salidas${metrics.retirosFondoMes?` + ${fmtMoney(metrics.retirosFondoMes)} recuperados del fondo`:''}</span></div></div>
+        <div class="small"><div class="kpi"><span>Salidas reales del mes</span><strong>${fmtMoney(metrics.salidasMes)}</strong><span>${fmtMoney(metrics.gastosMes)} en gastos, ${fmtMoney(metrics.inversionesMes)} invertidos y ${fmtMoney(metrics.aportesFondoMes)} enviados al fondo</span></div></div>
+        <div class="small"><div class="kpi"><span>Cuotas este mes</span><strong>${fmtMoney(metrics.cuotasMes)}</strong><span>${activeInstallmentsForMonth(currentMonth).length} compras financiadas activas</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="medium card"><div class="card-head"><h2>Alertas automaticas</h2><span class="pill">Mes actual</span></div><div class="list">${alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Comparativa mensual</h2><span class="pill">${escapeHTML(monthLabel(comparison.prevKey))} vs ${escapeHTML(monthLabel(comparison.currentKey))}</span></div><div class="list"><div class="list-item"><div><strong>Ingresos</strong><span>Comparado con el mes anterior</span></div><div><strong>${comparison.ingresosDiff>=0?'+':''}${fmtMoney(comparison.ingresosDiff)}</strong></div></div><div class="list-item"><div><strong>Gastos</strong><span>Comparado con el mes anterior</span></div><div><strong>${comparison.gastosDiff>=0?'+':''}${fmtMoney(comparison.gastosDiff)}</strong></div></div>${comparison.topDelta?`<div class="list-item"><div><strong>Categoria que mas cambio</strong><span>${escapeHTML(comparison.topDelta.cat)}</span></div><div><strong>${comparison.topDelta.diff>=0?'+':''}${fmtMoney(comparison.topDelta.diff)}</strong></div></div>`:''}${comparison.topSavings?`<div class="list-item"><div><strong>Donde bajaste</strong><span>${escapeHTML(comparison.topSavings.cat)}</span></div><div><strong>${fmtMoney(Math.abs(comparison.topSavings.diff))}</strong></div></div>`:''}</div></div>
+        <div class="large card"><div class="card-head"><h2>Radar del mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="inline-fields"><div class="list-item"><div><strong>Categorias que mas pesan</strong><span>${topSpending.length?'Lo que mas te esta consumiendo este mes':'Todavia no hay gastos cargados'}</span></div><div><strong>${topSpending.length}</strong></div></div><div class="list-item"><div><strong>Donde ajustar</strong><span>${cutSuggestions.length?'Sugerencias automaticas de recorte':'Sin recortes urgentes por ahora'}</span></div><div><strong>${cutSuggestions.length}</strong></div></div><div class="list-item"><div><strong>Compras planeadas activas</strong><span>${planesActivos.length?'Pendientes o reprogramadas':'Nada pendiente'}</span></div><div><strong>${planesActivos.length}</strong></div></div><div class="list-item"><div><strong>Movimiento del fondo</strong><span>${fmtMoney(fondoResumen.aportes)} aportes · ${fmtMoney(fondoResumen.retiros)} retiros</span></div><div><strong>${fmtMoney(metrics.fondoNetoMes)}</strong></div></div></div><div class="list" style="margin-top:12px">${topSpending.length?topSpending.map(([cat,total],index)=>`<div class="list-item"><div><strong>${index+1}. ${escapeHTML(cat)}</strong><span>${escapeHTML(monthLabel(currentMonth))}</span></div><div><strong>${fmtMoney(total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay categorias con gasto para mostrar.</div>'}</div><div class="list" style="margin-top:12px">${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que sobresalga como recorte urgente.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Disponible variable</h2><span class="pill">Gasto cotidiano</span></div><div class="list"><div class="list-item"><div><strong>Ya gastaste</strong><span>Bloque variable con presupuesto</span></div><div><strong>${fmtMoney(variablePocket.spent)}</strong></div></div><div class="list-item"><div><strong>Te queda</strong><span>Sin romper el presupuesto variable</span></div><div><strong>${fmtMoney(variablePocket.available)}</strong></div></div><div class="list-item"><div><strong>Categoria a frenar primero</strong><span>${cutSuggestions[0]?escapeHTML(cutSuggestions[0].cat):'Sin alerta fuerte'}</span></div><div><span class="muted">${cutSuggestions[0]?escapeHTML(cutSuggestions[0].reason):'Mes ordenado'}</span></div></div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda y vencimientos</h2><span class="pill">Proximos dias</span></div><div class="list">${agenda.length?agenda.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${escapeHTML(item.label)}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Proximos compromisos</h2><span class="pill">Cuotas activas</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>ARS / USD blue</h2><button type="button" class="btn-soft" id="refreshBlue">Actualizar</button></div><div class="list">${blueInfo}<div class="hint">${blueState.fecha?`Actualizado: ${new Date(blueState.fecha).toLocaleString('es-AR')}`:'Sin horario disponible'}</div><div class="inline-fields"><div><label for="arsInput">ARS</label><input id="arsInput" type="number" min="0" step="0.01" placeholder="0" /></div><div><label for="usdInput">USD</label><input id="usdInput" type="number" min="0" step="0.01" placeholder="0" /></div></div><div class="status" id="blueConvertResult">${blueState.status==='ok'?'Ingresa un monto para convertir usando dolar blue venta/compra.':'No disponible'}</div></div></div>
+        <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function renderMovimientos(){
+      const filtered=filteredMovimientos();
+      const recurrentes=recurringRows();
+      const pendingRecurring=pendingRecurringTemplates(currentMonth);
+      return sectionTemplate('movimientos',`
+        <div class="medium card"><div class="card-head"><h2>Cargar movimiento</h2><span class="pill">Alta manual</span></div><form id="movForm" class="grid"><input id="movEditId" type="hidden" /><div class="medium"><label for="movTipo">Tipo</label><select id="movTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="movMonto">Monto</label><input id="movMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="movFecha">Fecha</label><input id="movFecha" type="date" required /></div><div class="medium"><label for="movCategoria">Categoria</label><select id="movCategoria"></select></div><div class="medium"><label for="movForma">Forma</label><select id="movForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div><div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div><div class="medium mov-cuotas"><label for="movCuotas">Cantidad de cuotas</label><input id="movCuotas" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movCuotaActual">N cuota actual</label><input id="movCuotaActual" type="number" min="1" value="1" /></div><div class="medium mov-cuotas"><label for="movInicioCobro">Primer mes de cobro</label><input id="movInicioCobro" type="month" /></div><div class="large"><label for="movDetalle">Detalle</label><input id="movDetalle" placeholder="ej. Tablet nueva" /></div><div class="large setup-actions"><button type="submit" id="movSubmitBtn">Guardar movimiento</button><button type="button" class="btn-soft" id="movCancelBtn" style="display:none">Cancelar edicion</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Recurrentes del mes</h2><span class="pill">${pendingRecurring.length} pendientes</span></div><form id="recurringForm" class="grid"><div class="medium"><label for="recNombre">Nombre</label><input id="recNombre" required placeholder="ej. Alquiler" /></div><div class="medium"><label for="recTipo">Tipo</label><select id="recTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div><div class="medium"><label for="recCategoria">Categoria</label><select id="recCategoria">${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="recMonto">Monto</label><input id="recMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="recDia">Dia del mes</label><input id="recDia" type="number" min="1" max="31" value="${new Date().getDate()}" /></div><div class="medium"><label for="recCuenta">Cuenta</label><input id="recCuenta" placeholder="opcional" /></div><div class="large"><label for="recDetalle">Detalle</label><input id="recDetalle" placeholder="ej. Debito automatico" /></div><div class="large setup-actions"><button type="submit">Guardar recurrente</button><button type="button" class="btn-soft" id="applyRecurringMonth">Aplicar pendientes de ${escapeHTML(monthLabel(currentMonth))}</button></div></form><div class="list" style="margin-top:12px">${recurrentes.length?recurrentes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${escapeHTML(item.tipo)} · dia ${item.dia} · ${escapeHTML(item.categoria)}${item.activo===false?' · pausado':''}</span></div><div style="min-width:240px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-run-recurring="${item.id}">Aplicar</button><button type="button" class="btn-soft" data-toggle-recurring="${item.id}">${item.activo===false?'Activar':'Pausar'}</button><button type="button" class="btn-danger" data-del-recurring="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no hay plantillas recurrentes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2><span class="pill">${data.categorias.length} activas</span></div><form id="catForm" class="inline-fields"><input id="newCat" placeholder="Nueva categoria" /><button type="submit">Agregar categoria</button></form><div class="list" style="margin-top:12px">${data.categorias.map((cat)=>`<div class="list-item"><div><strong>${escapeHTML(cat)}</strong></div><button type="button" class="btn-soft" data-del-cat="${escapeHTML(cat)}">Eliminar</button></div>`).join('')}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Backup y exportacion</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div></div></div>
+        <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${filtered.length} de ${data.movimientos.length}</span></div><div class="grid" style="margin-bottom:12px"><div class="medium"><label for="movFilterQuery">Buscar</label><input id="movFilterQuery" value="${escapeHTML(movementFilters.query||'')}" placeholder="detalle, cuenta, categoria..." /></div><div class="medium"><label for="movFilterTipo">Tipo</label><select id="movFilterTipo"><option value="">Todos</option><option value="gasto" ${movementFilters.tipo==='gasto'?'selected':''}>Gasto</option><option value="ingreso" ${movementFilters.tipo==='ingreso'?'selected':''}>Ingreso</option></select></div><div class="medium"><label for="movFilterCategoria">Categoria</label><select id="movFilterCategoria"><option value="">Todas</option>${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}" ${movementFilters.categoria===cat?'selected':''}>${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="movFilterDesde">Desde</label><input id="movFilterDesde" type="date" value="${escapeHTML(movementFilters.desde||'')}" /></div><div class="medium"><label for="movFilterHasta">Hasta</label><input id="movFilterHasta" type="date" value="${escapeHTML(movementFilters.hasta||'')}" /></div><div class="medium" style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" id="clearMovFilters">Limpiar filtros</button></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${filtered.map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos para esos filtros.</td></tr>'}</tbody></table></div></div>
+      `);
+    }
+    function buildCalendarEvents(year,monthIndex){
+      const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`;
+      const events=[];
+      data.movimientos.forEach((m)=>{const day=new Date(`${m.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} - ${m.categoria} - ${fmtMoney(parseNum(m.monto))}`,className:m.recurrenteId?'event-recurring':''});});
+      data.inversiones.forEach((i)=>{const day=new Date(`${i.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Inversion - ${i.tipo} - ${fmtMoney(parseNum(i.monto))}`,className:''});});
+      reminderRows().forEach((r)=>{const day=new Date(`${r.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`Recordatorio - ${r.titulo} - ${fmtMoney(parseNum(r.monto))}`,className:'event-reminder'});});
+      cardStatementRows(month).forEach((card)=>{events.push({day:card.cierreDate.getDate(),text:`Cierra ${card.nombre}${card.notas?` - ${card.notas}`:''}`,className:'event-card-close'});events.push({day:card.venceDate.getDate(),text:`Vence ${card.nombre} - ${fmtMoney(parseNum(card.monto))}`,className:'event-card-due'});});
+      pendingRecurringTemplates(month).forEach((item)=>{const date=monthDateFromDay(month,item.dia||1);events.push({day:date.getDate(),text:`Recurrente pendiente - ${item.nombre} - ${fmtMoney(parseNum(item.monto))}`,className:'event-recurring'});});
+      data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} - ${m.detalle||m.categoria} - ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`,className:'event-installment'});}));
+      return events;
+    }
+    function renderCalendarioSection(){
+      const monthKeyView=monthKey(calendarCursor),title=monthLabel(monthKeyView),rows=upcomingAgendaRows(12),cards=cardStatementRows(monthKeyView);
+      return sectionTemplate('calendario',`
+        <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid"><div class="medium"><label for="remTitulo">Titulo</label><input id="remTitulo" required placeholder="ej. Expensas" /></div><div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div><div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div><div class="medium"><label for="remCategoria">Categoria</label><select id="remCategoria"></select></div><div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div><div class="large"><button type="submit">Guardar recordatorio</button></div></form></div>
+        <div class="medium card"><div class="card-head"><h2>Resumenes de tarjeta</h2><span class="pill">${cards.length} visibles</span></div><form id="cardForm" class="grid"><div class="medium"><label for="cardNombre">Tarjeta</label><input id="cardNombre" required placeholder="ej. Visa Santander" /></div><div class="medium"><label for="cardMonto">Monto estimado</label><input id="cardMonto" type="number" min="0" step="0.01" placeholder="opcional" /></div><div class="medium"><label for="cardCierre">Dia de cierre</label><input id="cardCierre" type="number" min="1" max="31" value="20" /></div><div class="medium"><label for="cardVence">Dia de vencimiento</label><input id="cardVence" type="number" min="1" max="31" value="10" /></div><div class="large"><label for="cardNotas">Notas</label><input id="cardNotas" placeholder="ej. pagar desde cuenta sueldo" /></div><div class="large"><button type="submit">Guardar resumen</button></div></form><div class="list" style="margin-top:12px">${(Array.isArray(data.tarjetas)?data.tarjetas:[]).length?(Array.isArray(data.tarjetas)?data.tarjetas:[]).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>Cierra dia ${item.cierreDia} · vence dia ${item.venceDia}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:220px;text-align:right"><strong>${fmtMoney(parseNum(item.monto))}</strong><div class="setup-actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn-soft" data-toggle-card="${item.id}">${item.activo===false?'Activar':'Pausar'}</button><button type="button" class="btn-danger" data-del-card="${item.id}">Eliminar</button></div></div></div>`).join(''):'<div class="status ok">Todavia no cargaste vencimientos de tarjetas.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.source==='tarjeta'?'Resumen de tarjeta':item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span>${item.source==='recordatorio'?`<div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div>`:''}</div></div>`).join(''):'<div class="status ok">Todavia no hay recordatorios cargados.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="setup-actions" style="margin-top:0;margin-bottom:12px"><button type="button" class="btn-soft" id="calendarPrev">Mes anterior</button><button type="button" class="btn-soft" id="calendarNext">Mes siguiente</button><button type="button" class="btn-soft" id="calendarToday">Ir a hoy</button></div><div class="calendar" id="calendarGrid"></div></div>
+      `);
+    }
+    function renderCalendario(){
+      const root=$('#calendarGrid');if(!root)return;
+      const year=calendarCursor.getFullYear(),monthIndex=calendarCursor.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'],cells=[];
+      weekDays.forEach((day)=>cells.push(`<div class="cal-head">${day}</div>`));
+      for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
+      for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event ${escapeHTML(e.className||'')}">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
+      root.innerHTML=cells.join('');
+    }
+    function bindSectionEvents(){
+      const movForma=$('#movForma');
+      if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
+      $('#movFecha')?.addEventListener('change',()=>{if($('#movForma')?.value==='cuotas'&&!$('#movEditId')?.value)$('#movInicioCobro').value=monthKey($('#movFecha').value);});
+      const quickForma=$('#quickForma');
+      if(quickForma){const refreshQuick=()=>{const on=quickForma.value==='cuotas';$('#quickCuentaWrap').style.display=on?'':'none';$('#quickCuotasWrap').style.display=on?'':'none';$('#quickInicioCobroWrap').style.display=on?'':'none';if(on&&!$('#quickInicioCobro').value)$('#quickInicioCobro').value=currentMonth;};quickForma.addEventListener('change',refreshQuick);refreshQuick();}
+      $('#movForm')?.addEventListener('submit',(event)=>{event.preventDefault();const payload=readMovimientoForm();const index=data.movimientos.findIndex((m)=>m.id===payload.id);if(index>=0)data.movimientos[index]=payload;else data.movimientos.push(payload);resetMovimientoForm();persistAndRender();});
+      $('#movCancelBtn')?.addEventListener('click',()=>resetMovimientoForm());
+      $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
+      document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
+      document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
+      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
+      $('#movFilterQuery')?.addEventListener('input',(event)=>{movementFilters.query=event.target.value;renderAll();});
+      $('#movFilterTipo')?.addEventListener('change',(event)=>{movementFilters.tipo=event.target.value;renderAll();});
+      $('#movFilterCategoria')?.addEventListener('change',(event)=>{movementFilters.categoria=event.target.value;renderAll();});
+      $('#movFilterDesde')?.addEventListener('change',(event)=>{movementFilters.desde=event.target.value;renderAll();});
+      $('#movFilterHasta')?.addEventListener('change',(event)=>{movementFilters.hasta=event.target.value;renderAll();});
+      $('#clearMovFilters')?.addEventListener('click',()=>{movementFilters={query:'',tipo:'',categoria:'',desde:'',hasta:''};renderAll();});
+      $('#exportJsonBtn')?.addEventListener('click',()=>exportJsonBackup());
+      $('#exportCsvBtn')?.addEventListener('click',()=>exportMovimientosCsv());
+      $('#recurringForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recurrentes.push({id:uid(),nombre:$('#recNombre').value.trim(),tipo:$('#recTipo').value,categoria:$('#recCategoria').value,monto:parseNum($('#recMonto').value),dia:Math.max(1,Math.min(31,parseNum($('#recDia').value)||1)),cuenta:$('#recCuenta').value.trim(),detalle:$('#recDetalle').value.trim(),activo:true});event.target.reset();$('#recDia').value=new Date().getDate();persistAndRender();});
+      $('#applyRecurringMonth')?.addEventListener('click',()=>{const created=applyPendingRecurring(currentMonth);sync(created?'ok':'warn',created?`Se aplicaron ${created} recurrentes del mes.`:'No habia recurrentes pendientes para aplicar.');if(created)persistAndRender();});
+      document.querySelectorAll('[data-run-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.runRecurring);if(!item)return;const created=applyRecurringTemplate(item,currentMonth);sync(created?'ok':'warn',created?`Se agrego ${item.nombre} al mes actual.`:`${item.nombre} ya estaba cargado este mes.`);if(created)persistAndRender();}));
+      document.querySelectorAll('[data-toggle-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recurrentes.find((rec)=>rec.id===btn.dataset.toggleRecurring);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-recurring]').forEach((btn)=>btn.addEventListener('click',()=>{data.recurrentes=data.recurrentes.filter((rec)=>rec.id!==btn.dataset.delRecurring);persistAndRender();}));
+      $('#budgetForm')?.addEventListener('submit',(event)=>{event.preventDefault();document.querySelectorAll('[data-budget]').forEach((input)=>{data.presupuestos[input.dataset.budget]=parseNum(input.value);});persistAndRender();});
+      $('#applyMetodoBudgets')?.addEventListener('click',()=>{deriveMetodoBudgetPlan().suggestions.forEach((item)=>{data.presupuestos[item.cat]=item.suggested;});persistAndRender();});
+      $('#metodoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metodo.nombre=$('#metodoNombre').value.trim()||'Metodo mensual';data.metodo.items=data.metodo.items.map((item)=>({...item,nombre:$(`[data-metodo-nombre="${item.id}"]`)?.value.trim()||item.nombre,porcentaje:parseNum($(`[data-metodo-pct="${item.id}"]`)?.value)}));persistAndRender();});
+      $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
+      $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
+      $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
+      $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-plan-save]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planSave);if(!plan)return;const input=$(`[data-plan-save-amount="${btn.dataset.planSave}"]`);const monto=parseNum(input?.value);if(monto<=0)return;plan.ahorrado=parseNum(plan.ahorrado)+monto;if(input)input.value='';persistAndRender();}));
+      document.querySelectorAll('[data-plan-bought]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planBought);if(!plan)return;plan.estado='Comprada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-next]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planNext);if(!plan)return;plan.mes=nextPlanMonth(plan.mes);plan.estado='Reprogramada';persistAndRender();}));
+      document.querySelectorAll('[data-plan-pending]').forEach((btn)=>btn.addEventListener('click',()=>{const plan=data.planes.find((p)=>p.id===btn.dataset.planPending);if(!plan)return;plan.estado='Pendiente';persistAndRender();}));
+      document.querySelectorAll('[data-del-plan]').forEach((btn)=>btn.addEventListener('click',()=>{data.planes=data.planes.filter((p)=>p.id!==btn.dataset.delPlan);persistAndRender();}));
+      $('#remForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.recordatorios.unshift({id:uid(),titulo:$('#remTitulo').value.trim(),fecha:$('#remFecha').value,monto:parseNum($('#remMonto').value),categoria:$('#remCategoria').value,notas:$('#remNotas').value.trim(),estado:'pendiente'});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-rem]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.recordatorios.find((r)=>r.id===btn.dataset.toggleRem);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
+      document.querySelectorAll('[data-del-rem]').forEach((btn)=>btn.addEventListener('click',()=>{data.recordatorios=data.recordatorios.filter((r)=>r.id!==btn.dataset.delRem);persistAndRender();}));
+      $('#cardForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.tarjetas.unshift({id:uid(),nombre:$('#cardNombre').value.trim(),monto:parseNum($('#cardMonto').value),cierreDia:Math.max(1,Math.min(31,parseNum($('#cardCierre').value)||1)),venceDia:Math.max(1,Math.min(31,parseNum($('#cardVence').value)||1)),notas:$('#cardNotas').value.trim(),activo:true});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-toggle-card]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.tarjetas.find((card)=>card.id===btn.dataset.toggleCard);if(!item)return;item.activo=item.activo===false;persistAndRender();}));
+      document.querySelectorAll('[data-del-card]').forEach((btn)=>btn.addEventListener('click',()=>{data.tarjetas=data.tarjetas.filter((card)=>card.id!==btn.dataset.delCard);persistAndRender();}));
+      $('#calendarPrev')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);renderAll();});
+      $('#calendarNext')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);renderAll();});
+      $('#calendarToday')?.addEventListener('click',()=>{calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1);renderAll();});
+      $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;const monto=parseNum(aporte.monto);if((aporte.tipo||'aporte')==='retiro')data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;else data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-monto);data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
+      $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
+      document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
+      $('#refreshBlue')?.addEventListener('click',()=>fetchBlueRate());
+      $('#arsInput')?.addEventListener('input',()=>convertBlue('ars'));
+      $('#usdInput')?.addEventListener('input',()=>convertBlue('usd'));
+    }
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
       const projection=deriveMonthProjection();
@@ -2504,13 +3059,16 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const pendingProjection=Math.max(0,projection.comprometidoTotal-projection.yaComprometido);
       const topBudget=presupuestoRows().sort((a,b)=>(b.presupuesto-b.gastado)-(a.presupuesto-a.gastado))[0];
       const cutSuggestions=deriveCutSuggestions();
+      const nextCard=cardStatementRows(currentMonth)[0];
       if(text.includes('fin de mes')||text.includes('llego'))return `Hoy el panorama del mes marca ${fmtMoney(projection.yaComprometido)} ya salidos, ${fmtMoney(pendingProjection)} todavia por salir y un cierre estimado de ${fmtMoney(projection.cierreEstimado)}.`;
+      if(text.includes('venc')||text.includes('tarjeta'))return nextCard?`El proximo resumen cargado es ${nextCard.nombre}, con cierre el ${fmtDate(nextCard.cierreFecha)} y vencimiento el ${fmtDate(nextCard.vencimientoFecha)} por ${fmtMoney(nextCard.monto)}.`:`Todavia no cargaste vencimientos de resumenes de tarjeta. Podes hacerlo desde Calendario.`;
+      if(text.includes('recurrent'))return pendingRecurringTemplates(currentMonth).length?`Tenes ${pendingRecurringTemplates(currentMonth).length} recurrentes pendientes de aplicar en ${monthLabel(currentMonth)}.`:`No hay recurrentes pendientes para este mes.`;
       if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto'))return deriveMarketAdvice();
       if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar'))return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
-      if(text.includes('cuota')||text.includes('tarjeta'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga, ahora podes editar la compra desde la pestana Cuotas.`;
+      if(text.includes('cuota'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga, ahora podes editar la compra desde la pestana Cuotas.`;
       if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria'))return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
       if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion'))return `En el metodo mensual, el ahorro ahora toma ahorro libre mas aportes al fondo de emergencia. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en ahorro libre, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
-      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro e ideas de inversion con el mercado del dia. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
+      return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro, vencimientos y recurrentes. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     async function initRealtimeSync(){
       if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
