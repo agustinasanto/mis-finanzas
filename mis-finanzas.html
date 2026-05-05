@@ -385,7 +385,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         authUser=null,
         isUnlocked=false,
         activeTab='inicio',
-        currentMonth=new Date().toISOString().slice(0,7),
+        currentMonth=todayMonthKey(),
         cuotasViewMonth=currentMonth,
         cuotasManualMonth=false,
         calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1),
@@ -410,11 +410,36 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function fmtMoney(value){
       return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(parseNum(value)||0);
     }
+    function parseCalendarDate(value){
+      const raw=String(value||'').trim();
+      if(!raw)return null;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+        const [year,month,day]=raw.split('-').map(Number);
+        return new Date(year,month-1,day);
+      }
+      if(/^\d{4}-\d{2}$/.test(raw)){
+        const [year,month]=raw.split('-').map(Number);
+        return new Date(year,month-1,1);
+      }
+      const date=new Date(raw);
+      return Number.isNaN(date.getTime())?null:date;
+    }
+    function dateInputValue(value=new Date()){
+      const date=value instanceof Date?value:parseCalendarDate(value);
+      if(!(date instanceof Date)||Number.isNaN(date.getTime()))return '';
+      return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    }
+    function todayDateKey(){
+      return dateInputValue(new Date());
+    }
+    function todayMonthKey(){
+      return todayDateKey().slice(0,7);
+    }
     function monthKey(value){
       const raw=String(value||'').trim();
       if(/^\d{4}-\d{2}$/.test(raw))return raw;
-      const date=raw?new Date(raw):new Date();
-      if(Number.isNaN(date.getTime()))return new Date().toISOString().slice(0,7);
+      const date=raw?parseCalendarDate(raw):new Date();
+      if(!(date instanceof Date)||Number.isNaN(date.getTime()))return todayMonthKey();
       return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
     }
     function addMonths(month,offset){
@@ -429,8 +454,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function fmtDate(value){
       const raw=String(value||'').trim();
       if(!raw)return '-';
-      const date=/^\d{4}-\d{2}$/.test(raw)?new Date(`${raw}-01T00:00:00`):new Date(`${raw}T00:00:00`);
-      if(Number.isNaN(date.getTime()))return raw;
+      const date=parseCalendarDate(raw);
+      if(!(date instanceof Date)||Number.isNaN(date.getTime()))return raw;
       return date.toLocaleDateString('es-AR');
     }
     function uid(){
@@ -1084,8 +1109,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
           month,
           cierreDate,
           venceDate,
-          cierreFecha:cierreDate.toISOString().slice(0,10),
-          vencimientoFecha:venceDate.toISOString().slice(0,10)
+          cierreFecha:dateInputValue(cierreDate),
+          vencimientoFecha:dateInputValue(venceDate)
         };
       }).sort((a,b)=>a.venceDate-b.venceDate);
     }
@@ -1097,7 +1122,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function applyRecurringTemplate(item,month=currentMonth){
       if(!item||hasRecurringApplied(item,month))return false;
-      const fecha=monthDateFromDay(month,item.dia||1).toISOString().slice(0,10);
+      const fecha=dateInputValue(monthDateFromDay(month,item.dia||1));
       data.movimientos.push({
         id:uid(),
         recurrenteId:item.id,
@@ -1579,7 +1604,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#movEditId').value=mov?.id||'';
       $('#movTipo').value=mov?.tipo||'gasto';
       $('#movMonto').value=parseNum(mov?.monto)||'';
-      $('#movFecha').value=mov?.fecha||new Date().toISOString().slice(0,10);
+      $('#movFecha').value=mov?.fecha||todayDateKey();
       $('#movCategoria').value=mov?.categoria||data.categorias[0]||'Otros';
       $('#movForma').value=mov?.forma||'contado';
       $('#movCuenta').value=mov?.cuenta||'';
@@ -1594,7 +1619,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function resetMovimientoForm(){
       $('#movForm')?.reset();
-      populateMovimientoForm({fecha:new Date().toISOString().slice(0,10),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,inicioCobro:currentMonth,categoria:data.categorias[0]||'Otros'});
+      populateMovimientoForm({fecha:todayDateKey(),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,inicioCobro:currentMonth,categoria:data.categorias[0]||'Otros'});
     }
     function readMovimientoForm(){
       return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),inicioCobro:$('#movInicioCobro').value||monthKey($('#movFecha').value),detalle:$('#movDetalle').value.trim()};
@@ -2188,9 +2213,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnSaveConfig').addEventListener('click',guardarConfig);
       $('#btnLocalMode').addEventListener('click',modoLocal);
       $('#btnRelock')?.addEventListener('click',()=>{clearSavedAccess();lockApp('Sesión bloqueada. Ingresá con tu usuario y contraseña.');});
-      $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickMonto').focus();});
+      $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=todayDateKey();$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
-      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||new Date().toISOString().slice(0,10),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=new Date().toISOString().slice(0,10);$('#quickModal').classList.add('hidden');persistAndRender();});
+      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||todayDateKey(),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=todayDateKey();$('#quickModal').classList.add('hidden');persistAndRender();});
       $('#quickModal').addEventListener('click',(event)=>{if(event.target===$('#quickModal'))$('#quickModal').classList.add('hidden');});
       $('#assistantFab')?.addEventListener('click',()=>$('#assistantModal')?.classList.remove('hidden'));
       $('#closeAssistantModal')?.addEventListener('click',()=>$('#assistantModal')?.classList.add('hidden'));
@@ -2216,9 +2241,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
         initRealtimeSync().catch((error)=>{const info=classifySupabaseError(error);sync('err',info.text);setStatus('err',info.text);$('#setupOverlay')?.classList.add('hidden');lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Probá entrar con Google de nuevo en unos segundos.':'La conexión con Supabase ya está cargada. Probá entrar con Google y, si sigue fallando, ajustamos Supabase Auth.');});
       }else{refreshAccessOverlays();sync('warn','ConfiguraciÃ³n pendiente');}
       resetMovimientoForm();
-      if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
-      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
-      if($('#fondoRetiroFecha'))$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);
+      if($('#quickFecha'))$('#quickFecha').value=todayDateKey();
+      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=todayDateKey();
+      if($('#fondoRetiroFecha'))$('#fondoRetiroFecha').value=todayDateKey();
     }
     function registerServiceWorker(){
       if(!('serviceWorker' in navigator))return;
@@ -3043,8 +3068,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#calendarNext')?.addEventListener('click',()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);renderAll();});
       $('#calendarToday')?.addEventListener('click',()=>{calendarCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1);renderAll();});
       $('#fondoForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.fondo.basicos=parseNum($('#fondoBasicos').value);data.fondo.ahorrado=parseNum($('#fondoAhorrado').value);persistAndRender();});
-      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
-      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=new Date().toISOString().slice(0,10);persistAndRender();});
+      $('#fondoAporteForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoAporteMonto').value);if(monto<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha:$('#fondoAporteFecha').value,detalle:$('#fondoAporteDetalle').value.trim()});data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;event.target.reset();$('#fondoAporteFecha').value=todayDateKey();persistAndRender();});
+      $('#fondoRetiroForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#fondoRetiroMonto').value);if(monto<=0)return;const retiro=Math.min(parseNum(data.fondo.ahorrado),monto);if(retiro<=0)return;data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto:retiro,fecha:$('#fondoRetiroFecha').value,detalle:$('#fondoRetiroDetalle').value.trim()});data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-retiro);event.target.reset();$('#fondoRetiroFecha').value=todayDateKey();persistAndRender();});
       document.querySelectorAll('[data-del-fondo-aporte]').forEach((btn)=>btn.addEventListener('click',()=>{const aporte=data.fondo.aportes.find((item)=>item.id===btn.dataset.delFondoAporte);if(!aporte)return;const monto=parseNum(aporte.monto);if((aporte.tipo||'aporte')==='retiro')data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;else data.fondo.ahorrado=Math.max(0,parseNum(data.fondo.ahorrado)-monto);data.fondo.aportes=data.fondo.aportes.filter((item)=>item.id!==btn.dataset.delFondoAporte);persistAndRender();}));
       $('#metaForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.metas.push({id:uid(),nombre:$('#metaNombre').value.trim(),objetivo:parseNum($('#metaObjetivo').value),actual:parseNum($('#metaActual').value),fechaLimite:$('#metaFecha').value});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-meta]').forEach((btn)=>btn.addEventListener('click',()=>{data.metas=data.metas.filter((m)=>m.id!==btn.dataset.delMeta);persistAndRender();}));
@@ -3146,8 +3171,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
         sync('warn','Configuración pendiente');
       }
       resetMovimientoForm();
-      if($('#quickFecha'))$('#quickFecha').value=new Date().toISOString().slice(0,10);
-      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=new Date().toISOString().slice(0,10);
+      if($('#quickFecha'))$('#quickFecha').value=todayDateKey();
+      if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=todayDateKey();
       syncOverlayScrollLock();
     }
     window.addEventListener('beforeunload',()=>destroySupabaseClient());
