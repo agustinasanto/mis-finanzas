@@ -365,7 +365,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const EMBEDDED_CONFIG={url:'https://yyawyfzsnwzyhxhytdid.supabase.co',key:'sb_publishable_MuzXxQeIhl5w18eOjMvjBA_z4O1OvMg',code:'finanzas2026'};
     const PRESET_ACCESS={username:'agustinasanto13@gmail.com',salt:'8fd4c3a1c6be4f779e6d2b1a0f5c9a73',passwordHash:'628d94afea4879539138c6e902d7c8b4d810adae65ca3306ca09bbc1b3c87c1a'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
-    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras','Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}}; 
+    const CREDIT_CARD_CATEGORY='Tarjeta de credito';
+    const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras',CREDIT_CARD_CATEGORY,'Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
     DEF.recurrentes=[];
@@ -671,6 +672,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
         </div>`;
     }
     function clone(v){return JSON.parse(JSON.stringify(v));}
+    function ensureSystemCategories(target){
+      if(!target||typeof target!=='object')return target;
+      if(!Array.isArray(target.categorias))target.categorias=[];
+      if(!target.categorias.includes(CREDIT_CARD_CATEGORY))target.categorias.push(CREDIT_CARD_CATEGORY);
+      return target;
+    }
     function mergeWithDefaults(raw){
       const src=raw&&typeof raw==='object'?raw:{},next=clone(DEF);
       next.categorias=Array.isArray(src.categorias)&&src.categorias.length?src.categorias:clone(DEF.categorias);
@@ -735,7 +742,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         nombre:src.metodo.nombre||DEF.metodo.nombre,
         items:Array.isArray(src.metodo.items)&&src.metodo.items.length?src.metodo.items.map((item,idx)=>({id:item.id||`item_${idx}`,nombre:item.nombre||`Bloque ${idx+1}`,porcentaje:parseNum(item.porcentaje),color:item.color||DEF.metodo.items[idx]?.color||'var(--pink-2)'})):clone(DEF.metodo.items)
       }:clone(DEF.metodo);
-      return next;
+      return ensureSystemCategories(next);
     }
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
@@ -1428,7 +1435,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#catForm')?.addEventListener('submit',(event)=>{event.preventDefault();const value=$('#newCat').value.trim();if(!value||data.categorias.includes(value))return;data.categorias.push(value);$('#newCat').value='';persistAndRender();});
       document.querySelectorAll('[data-del-cat]').forEach((btn)=>btn.addEventListener('click',()=>{data.categorias=data.categorias.filter((cat)=>cat!==btn.dataset.delCat);persistAndRender();}));
       document.querySelectorAll('[data-edit-mov]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editMov)));
-      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{data.movimientos=data.movimientos.filter((m)=>m.id!==btn.dataset.delMov);persistAndRender();}));
+      document.querySelectorAll('[data-del-mov]').forEach((btn)=>btn.addEventListener('click',()=>{if(removeMovimiento(btn.dataset.delMov))persistAndRender();}));
       $('#movFilterQuery')?.addEventListener('change',(event)=>{movementFilters.query=event.target.value;renderAll();});
       $('#movFilterTipo')?.addEventListener('change',(event)=>{movementFilters.tipo=event.target.value;renderAll();});
       $('#movFilterCategoria')?.addEventListener('change',(event)=>{movementFilters.categoria=event.target.value;renderAll();});
@@ -1448,8 +1455,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
-      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
-      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);if(!item)return;const dueMonth=cuotaMonthKeys(item)[Math.max(0,currentInstallmentNumber(item)-1)]||installmentStartMonth(item);if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth))persistAndRender();}));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth))persistAndRender();}));
       document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
@@ -1574,11 +1581,58 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function movimientoMontoMes(mov,month){
       const monto=parseNum(mov.monto);
       if(mov.tipo!=='gasto')return monto;
-      if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>=1){const cuota=monto/parseNum(mov.cuotas);return cuotaMonthKeys(mov).includes(month)?cuota:0;}
+      if(mov.esPagoCuota)return monthKey(mov.fecha)===month?monto:0;
+      if(mov.forma==='cuotas'&&parseNum(mov.cuotas)>=1){
+        const cuota=monto/parseNum(mov.cuotas),idx=cuotaMonthKeys(mov).indexOf(month);
+        if(idx===-1)return 0;
+        return findInstallmentPayment(mov.id,idx+1)?0:cuota;
+      }
       return monthKey(mov.fecha)===month?monto:0;
     }
     function installmentStartMonth(mov){return mov?.inicioCobro||monthKey(mov?.fecha);}
     function cuotaMonthKeys(mov){const total=parseNum(mov.cuotas);if(total<=1)return[installmentStartMonth(mov)];const base=installmentStartMonth(mov);return Array.from({length:total},(_,i)=>addMonths(base,i));}
+    function findInstallmentPayment(movId,installmentNumber){
+      return data.movimientos.find((item)=>item.esPagoCuota&&item.cuotaPagoDe===movId&&parseNum(item.cuotaPagoNumero)===parseNum(installmentNumber));
+    }
+    function buildInstallmentPaymentRecord(mov,paidMonth,installmentNumber){
+      ensureSystemCategories(data);
+      const cuotaMonto=parseNum(mov.monto)/Math.max(1,parseNum(mov.cuotas)||1);
+      const month=monthKey(paidMonth||installmentStartMonth(mov));
+      const today=parseCalendarDate(todayDateKey());
+      const recordDate=dateInputValue(monthDateFromDay(month,today?.getDate?.()||1));
+      return{
+        id:uid(),
+        tipo:'gasto',
+        monto:cuotaMonto,
+        fecha:recordDate,
+        categoria:CREDIT_CARD_CATEGORY,
+        forma:'contado',
+        cuenta:mov.cuenta||'Tarjeta de credito',
+        cuotas:1,
+        cuotaActual:1,
+        inicioCobro:month,
+        detalle:`Pago cuota ${installmentNumber}/${Math.max(1,parseNum(mov.cuotas)||1)} - ${mov.detalle||mov.categoria}`,
+        esPagoCuota:true,
+        cuotaPagoDe:mov.id,
+        cuotaPagoNumero:installmentNumber
+      };
+    }
+    function removeMovimiento(id){
+      const target=data.movimientos.find((item)=>item.id===id);
+      if(!target)return false;
+      if(target.esPagoCuota&&target.cuotaPagoDe){
+        const original=data.movimientos.find((item)=>item.id===target.cuotaPagoDe);
+        if(original){
+          original.cuotaActual=Math.max(1,Math.min(parseNum(original.cuotaActual||1),parseNum(target.cuotaPagoNumero||1)));
+        }
+      }
+      const idsToRemove=new Set([id]);
+      if(target.forma==='cuotas'){
+        data.movimientos.filter((item)=>item.esPagoCuota&&item.cuotaPagoDe===target.id).forEach((item)=>idsToRemove.add(item.id));
+      }
+      data.movimientos=data.movimientos.filter((item)=>!idsToRemove.has(item.id));
+      return true;
+    }
     function activeInstallmentsForMonth(month){
       return data.movimientos.filter((m)=>m.tipo==='gasto'&&m.forma==='cuotas'&&parseNum(m.cuotas)>=1&&remainingInstallments(m)>0).map((m)=>{
         const keys=cuotaMonthKeys(m),
@@ -1610,9 +1664,16 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const keys=cuotaMonthKeys(mov);
       return keys[currentInstallmentNumber(mov)-1]===monthKey(month);
     }
-    function markInstallmentPaid(id){
+    function markInstallmentPaid(id,paidMonth){
       const item=data.movimientos.find((m)=>m.id===id);
       if(!item||remainingInstallments(item)<=0)return false;
+      const installmentNumber=currentInstallmentNumber(item);
+      const dueMonth=cuotaMonthKeys(item)[Math.max(0,installmentNumber-1)]||installmentStartMonth(item);
+      const month=monthKey(paidMonth||dueMonth);
+      if(!canMarkInstallmentPaid(item,month))return false;
+      if(!findInstallmentPayment(item.id,installmentNumber)){
+        data.movimientos.unshift(buildInstallmentPaymentRecord(item,month,installmentNumber));
+      }
       item.cuotaActual=Math.min(parseNum(item.cuotas)+1,parseNum(item.cuotaActual||1)+1);
       return true;
     }
@@ -3055,6 +3116,52 @@ alter publication supabase_realtime add table public.mf_states;</div>
       for(let i=0;i<offset;i++)cells.push('<div class="cal-day empty"></div>');
       for(let day=1;day<=days;day++){const todays=events.filter((e)=>e.day===day);cells.push(`<div class="cal-day"><div class="day-number">${day}</div>${todays.map((e)=>`<span class="event ${escapeHTML(e.className||'')}">${escapeHTML(e.text)}</span>`).join('')}</div>`);}
       root.innerHTML=cells.join('');
+    }
+    function renderInicio(){
+      const metrics=deriveMetrics(),
+            alerts=autoAlerts().slice(0,3),
+            agenda=upcomingAgendaRows(4),
+            cutSuggestions=deriveCutSuggestions().slice(0,3),
+            compromisos=activeInstallmentsForMonth(currentMonth).slice(0,3),
+            latestMovs=latestMovimientos(5),
+            topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,3),
+            plansActive=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada'),
+            variablePocket=deriveVariablePocket(),
+            comparison=deriveMonthComparison();
+      const categorySnapshot=Object.entries(data.movimientos.filter((mov)=>monthKey(mov.fecha)===currentMonth).reduce((acc,mov)=>{
+        const key=mov.categoria||'Sin categoria';
+        if(!acc[key])acc[key]={cat:key,total:0,count:0,lastDate:'',lastDetail:''};
+        acc[key].total+=parseNum(mov.monto);
+        acc[key].count+=1;
+        if(String(mov.fecha)>String(acc[key].lastDate)){
+          acc[key].lastDate=String(mov.fecha||'');
+          acc[key].lastDetail=mov.detalle||mov.cuenta||mov.tipo||'Movimiento';
+        }
+        return acc;
+      },{})).map(([,row])=>row).sort((a,b)=>b.total-a.total).slice(0,6);
+      const openingText=metrics.ingresosMes<=0
+        ? 'Todavia no hay ingresos cargados este mes, asi que conviene empezar por ahi para ordenar el tablero.'
+        : metrics.saldo<0
+          ? `El mes viene ajustado: hoy estas ${fmtMoney(Math.abs(metrics.saldo))} abajo y conviene frenar gastos nuevos.`
+          : cutSuggestions[0]
+            ? `Hoy la categoria que mas conviene mirar es ${cutSuggestions[0].cat}. ${cutSuggestions[0].reason}`
+            : `El mes viene bastante prolijo. Hoy tenes ${fmtMoney(metrics.saldo)} de aire sobre ingresos ya cargados.`;
+      const comparisonText=comparison.topDelta
+        ? `${comparison.topDelta.cat} es la categoria que mas se movio vs ${monthLabel(comparison.prevKey)}.`
+        : `Todavia no hay suficiente movimiento para comparar contra ${monthLabel(comparison.prevKey)}.`;
+      return sectionTemplate('inicio',`
+        <div class="small"><div class="kpi"><span>Saldo del mes</span><strong>${fmtMoney(metrics.saldo)}</strong><span>${fmtMoney(metrics.ingresosMes)} ingresos - ${fmtMoney(metrics.salidasMes)} salidas${metrics.retirosFondoMes?` + ${fmtMoney(metrics.retirosFondoMes)} recuperados del fondo`:''}</span></div></div>
+        <div class="small"><div class="kpi"><span>Salidas reales</span><strong>${fmtMoney(metrics.salidasMes)}</strong><span>${fmtMoney(metrics.gastosMes)} en gastos + ${fmtMoney(metrics.inversionesMes)} invertidos</span></div></div>
+        <div class="small"><div class="kpi"><span>Disponible variable</span><strong>${fmtMoney(variablePocket.available)}</strong><span>${fmtMoney(variablePocket.spent)} usados del bloque cotidiano</span></div></div>
+        <div class="small"><div class="kpi"><span>Fondo de emergencia</span><strong>${metrics.fondoPct}%</strong><span>${fmtMoney(data.fondo.ahorrado)} de ${fmtMoney(metrics.fondoMeta||0)}</span></div></div>
+        <div class="large card"><div class="card-head"><h2>Asi va tu mes</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="status ${metrics.saldo<0?'err':cutSuggestions[0]?'warn':'ok'}">${escapeHTML(openingText)}</div><div class="inline-fields" style="margin-top:12px"><div class="list-item"><div><strong>Lo que mas pesa hoy</strong><span>${topSpending[0]?escapeHTML(topSpending[0][0]):'Sin gasto dominante'}</span></div><div><strong>${topSpending[0]?fmtMoney(topSpending[0][1]):fmtMoney(0)}</strong></div></div><div class="list-item"><div><strong>Cuotas del mes</strong><span>${compromisos.length} compromisos activos</span></div><div><strong>${fmtMoney(metrics.cuotasMes)}</strong></div></div><div class="list-item"><div><strong>Compras planeadas</strong><span>${plansActive.length?`${plansActive.length} activas`:'Sin pendientes'}</span></div><div><strong>${fmtMoney(plansActive.reduce((acc,plan)=>acc+Math.max(0,parseNum(plan.costo)-parseNum(plan.ahorrado)),0))}</strong></div></div></div><div class="list" style="margin-top:12px"><div class="list-item"><div><strong>Comparado con el mes pasado</strong><span>${escapeHTML(comparisonText)}</span></div><div><strong>${comparison.gastosDiff>=0?'+':''}${fmtMoney(comparison.gastosDiff)}</strong><span class="muted">gasto vs mes previo</span></div></div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Que mirar ahora</h2><span class="pill">Foco rapido</span></div><div class="list">${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que pida freno urgente.</div>'}${alerts.length?alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join(''):''}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Pantallazo por categoria</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${categorySnapshot.length?categorySnapshot.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(row.cat)}</strong><span>${row.count} movimientos · ultimo ${fmtDate(row.lastDate)}${row.lastDetail?` · ${escapeHTML(row.lastDetail)}`:''}</span></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos este mes para resumir por categoria.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Agenda y vencimientos</h2><span class="pill">Proximos dias</span></div><div class="list">${agenda.length?agenda.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${escapeHTML(item.label)}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="medium card"><div class="card-head"><h2>Cuotas y planes</h2><span class="pill">En curso</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
+        <div class="medium card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="list">${latestMovs.length?latestMovs.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||m.categoria)}</strong><span>${fmtDate(m.fecha)} · ${escapeHTML(m.categoria)} · ${escapeHTML(m.tipo)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos cargados.</div>'}</div></div>
+      `);
     }
     function bindSectionEvents(){
       const movForma=$('#movForma');
