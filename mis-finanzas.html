@@ -2302,8 +2302,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
-      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
-      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
+        const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);
+        if(!item)return;
+        const dueMonth=cuotaMonthKeys(item)[Math.max(0,currentInstallmentNumber(item)-1)]||installmentStartMonth(item);
+        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth))persistAndRender();
+      }));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
+        const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);
+        if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;
+        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth))persistAndRender();
+      }));
       document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
@@ -3211,8 +3220,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#chatForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#chatInput');const question=input?.value.trim();if(!question)return;data.chat.push({id:uid(),role:'user',text:question,at:new Date().toISOString()});data.chat.push({id:uid(),role:'assistant',text:assistantReply(question),at:new Date().toISOString()});input.value='';persistAndRender();});
       $('#invForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.inversiones.push({id:uid(),tipo:$('#invTipo').value,activo:$('#invActivo').value.trim(),monto:parseNum($('#invMonto').value),cuenta:$('#invCuenta').value.trim(),fecha:$('#invFecha').value,rendimiento:parseNum($('#invRend').value),notas:$('#invNotas').value.trim()});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-del-inv]').forEach((btn)=>btn.addEventListener('click',()=>{data.inversiones=data.inversiones.filter((i)=>i.id!==btn.dataset.delInv);persistAndRender();}));
-      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(markInstallmentPaid(btn.dataset.nextCuota))persistAndRender();}));
-      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;if(markInstallmentPaid(btn.dataset.payCuota))persistAndRender();}));
+      document.querySelectorAll('[data-next-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
+        const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);
+        if(!item)return;
+        const dueMonth=cuotaMonthKeys(item)[Math.max(0,currentInstallmentNumber(item)-1)]||installmentStartMonth(item);
+        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth))persistAndRender();
+      }));
+      document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
+        const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);
+        if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;
+        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth))persistAndRender();
+      }));
       document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
       $('#planForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.planes.push({id:uid(),nombre:$('#planNombre').value.trim(),costo:parseNum($('#planCosto').value),prioridad:$('#planPrioridad').value,mes:$('#planMes').value,notas:$('#planNotas').value.trim(),estado:'Pendiente',ahorrado:0});event.target.reset();persistAndRender();});
