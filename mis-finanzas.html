@@ -705,6 +705,31 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!target.categorias.includes(CREDIT_CARD_CATEGORY))target.categorias.push(CREDIT_CARD_CATEGORY);
       return target;
     }
+    function normalizeInstallmentPayments(target){
+      if(!target||!Array.isArray(target.movimientos))return false;
+      ensureSystemCategories(target);
+      let changed=false;
+      const movements=target.movimientos;
+      const findPayment=(movId,number)=>movements.find((item)=>item.esPagoCuota&&item.cuotaPagoDe===movId&&parseNum(item.cuotaPagoNumero)===parseNum(number));
+      movements.forEach((mov)=>{
+        if(!mov||!mov.esPagoCuota)return;
+        if(mov.categoria!==CREDIT_CARD_CATEGORY){mov.categoria=CREDIT_CARD_CATEGORY;changed=true;}
+        if(mov.tipo!=='gasto'){mov.tipo='gasto';changed=true;}
+        if(mov.forma!=='contado'){mov.forma='contado';changed=true;}
+        if(parseNum(mov.cuotas)!==1){mov.cuotas=1;changed=true;}
+        if(!mov.cuenta){mov.cuenta='Tarjeta de credito';changed=true;}
+      });
+      movements.filter((mov)=>mov&&mov.tipo==='gasto'&&mov.forma==='cuotas'&&parseNum(mov.cuotas)>=1).forEach((mov)=>{
+        const paidUntil=Math.min(parseNum(mov.cuotaActual||1)-1,parseNum(mov.cuotas));
+        for(let number=1;number<=paidUntil;number++){
+          if(findPayment(mov.id,number))continue;
+          const month=cuotaMonthKeys(mov)[number-1]||installmentStartMonth(mov);
+          movements.unshift(buildInstallmentPaymentRecord(mov,month,number));
+          changed=true;
+        }
+      });
+      return changed;
+    }
     function mergeWithDefaults(raw){
       const src=raw&&typeof raw==='object'?raw:{},next=clone(DEF);
       next.categorias=Array.isArray(src.categorias)&&src.categorias.length?src.categorias:clone(DEF.categorias);
@@ -769,7 +794,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
         nombre:src.metodo.nombre||DEF.metodo.nombre,
         items:Array.isArray(src.metodo.items)&&src.metodo.items.length?src.metodo.items.map((item,idx)=>({id:item.id||`item_${idx}`,nombre:item.nombre||`Bloque ${idx+1}`,porcentaje:parseNum(item.porcentaje),color:item.color||DEF.metodo.items[idx]?.color||'var(--pink-2)'})):clone(DEF.metodo.items)
       }:clone(DEF.metodo);
-      return ensureSystemCategories(next);
+      ensureSystemCategories(next);
+      normalizeInstallmentPayments(next);
+      return next;
     }
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
@@ -1604,7 +1631,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       clearTimeout(saveTimer);
       saveTimer=setTimeout(async()=>{try{skipRemote=true;await writeRemoteRow(sbClient,activeCode,data);sync('ok','Cambios sincronizados');}catch(error){skipRemote=false;sync('err',classifySupabaseError(error).text);}},700);
     }
-    function persistAndRender(opts={}){saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
+    function persistAndRender(opts={}){normalizeInstallmentPayments(data);saveLocal();renderAll();if(!opts.localOnly)queueRemoteSave();}
     function movimientoMontoMes(mov,month){
       const monto=parseNum(mov.monto);
       if(mov.tipo!=='gasto')return monto;
@@ -2378,12 +2405,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
         const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);
         if(!item)return;
         const dueMonth=cuotaMonthKeys(item)[Math.max(0,currentInstallmentNumber(item)-1)]||installmentStartMonth(item);
-        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth))persistAndRender();
+        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth)){
+          movementFilters={query:'',tipo:'gasto',categoria:CREDIT_CARD_CATEGORY,desde:'',hasta:''};
+          persistAndRender();
+        }
       }));
       document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
         const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);
         if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;
-        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth))persistAndRender();
+        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth)){
+          movementFilters={query:'',tipo:'gasto',categoria:CREDIT_CARD_CATEGORY,desde:'',hasta:''};
+          persistAndRender();
+        }
       }));
       document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
@@ -3296,12 +3329,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
         const item=data.movimientos.find((m)=>m.id===btn.dataset.nextCuota);
         if(!item)return;
         const dueMonth=cuotaMonthKeys(item)[Math.max(0,currentInstallmentNumber(item)-1)]||installmentStartMonth(item);
-        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth))persistAndRender();
+        if(markInstallmentPaid(btn.dataset.nextCuota,dueMonth)){
+          movementFilters={query:'',tipo:'gasto',categoria:CREDIT_CARD_CATEGORY,desde:'',hasta:''};
+          persistAndRender();
+        }
       }));
       document.querySelectorAll('[data-pay-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{
         const item=data.movimientos.find((m)=>m.id===btn.dataset.payCuota);
         if(!item||!canMarkInstallmentPaid(item,btn.dataset.payMonth))return;
-        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth))persistAndRender();
+        if(markInstallmentPaid(btn.dataset.payCuota,btn.dataset.payMonth)){
+          movementFilters={query:'',tipo:'gasto',categoria:CREDIT_CARD_CATEGORY,desde:'',hasta:''};
+          persistAndRender();
+        }
       }));
       document.querySelectorAll('[data-edit-cuota]').forEach((btn)=>btn.addEventListener('click',()=>startMovimientoEdit(btn.dataset.editCuota)));
       $('#cuotasViewMonth')?.addEventListener('change',(event)=>{cuotasManualMonth=true;cuotasViewMonth=event.target.value||currentMonth;renderAll();});
@@ -3358,11 +3397,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(remote&&remote.payload){
         data=mergeWithDefaults(remote.payload);
         const presetChanged=ensurePresetAccess();
+        const paymentsChanged=normalizeInstallmentPayments(data);
         lastRemoteStamp=remote.updated_at||'';
         saveLocal();
-        if(presetChanged)await writeRemoteRow(client,safeCode,data);
+        if(presetChanged||paymentsChanged)await writeRemoteRow(client,safeCode,data);
       }else{
         ensurePresetAccess();
+        normalizeInstallmentPayments(data);
         await writeRemoteRow(client,safeCode,data);
       }
       sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{
@@ -3371,11 +3412,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
           lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;
           data=mergeWithDefaults(payload.new.payload);
           const presetChanged=ensurePresetAccess();
+          const paymentsChanged=normalizeInstallmentPayments(data);
           saveLocal();
           renderAll();
           refreshAccessOverlays();
           sync('ok','Cambios recibidos desde Supabase');
-          if(presetChanged)queueRemoteSave();
+          if(presetChanged||paymentsChanged)queueRemoteSave();
         }
       }).subscribe();
       sbPoller=setInterval(async()=>{
@@ -3385,11 +3427,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
             lastRemoteStamp=row.updated_at;
             data=mergeWithDefaults(row.payload||{});
             const presetChanged=ensurePresetAccess();
+            const paymentsChanged=normalizeInstallmentPayments(data);
             saveLocal();
             renderAll();
             refreshAccessOverlays();
             sync('ok','Cambios actualizados');
-            if(presetChanged)queueRemoteSave();
+            if(presetChanged||paymentsChanged)queueRemoteSave();
           }
         }catch(error){}
       },15000);
@@ -3401,6 +3444,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       liveConfig=loadConfig();
       saveConfig(liveConfig);
       data=loadLocal();
+      const repairedPayments=normalizeInstallmentPayments(data);
+      if(repairedPayments)saveLocal();
       ensurePresetAccess();
       enhanceLoginOverlay();
       createTabs();
