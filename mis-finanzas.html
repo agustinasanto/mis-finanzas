@@ -914,7 +914,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function saveConfig(cfg){
       const next=hasRemoteConfig(cfg)?cfg:{...EMBEDDED_CONFIG};
-      localStorage.setItem(CONFIG_KEY,JSON.stringify(next));
+      try{localStorage.setItem(CONFIG_KEY,JSON.stringify(next));}catch(err){}
       liveConfig=next;
     }
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig={...EMBEDDED_CONFIG};}
@@ -2663,6 +2663,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function init(){
       liveConfig=loadConfig();
+      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
       saveConfig(liveConfig);
       data=loadLocal();
       enhanceLoginOverlay();
@@ -2806,7 +2807,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
     }
     function refreshAccessOverlays(){
-      const needsSetup=!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key;
+      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
+      const needsSetup=!hasRemoteConfig(liveConfig);
       if(needsSetup){
         $('#setupOverlay')?.classList.remove('hidden');
         $('#loginOverlay')?.classList.add('hidden');
@@ -3771,6 +3773,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     }
     function init(){
       liveConfig=loadConfig();
+      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
       saveConfig(liveConfig);
       data=loadLocal();
       const repairedPayments=normalizeInstallmentPayments(data);
