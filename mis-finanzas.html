@@ -1530,7 +1530,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${filtered.length} de ${data.movimientos.length}</span></div><div class="grid" style="margin-bottom:12px"><div class="medium"><label for="movFilterQuery">Buscar</label><input id="movFilterQuery" value="${escapeHTML(movementFilters.query||'')}" placeholder="detalle, cuenta, categoria..." /></div><div class="medium"><label for="movFilterTipo">Tipo</label><select id="movFilterTipo"><option value="">Todos</option><option value="gasto" ${movementFilters.tipo==='gasto'?'selected':''}>Gasto</option><option value="ingreso" ${movementFilters.tipo==='ingreso'?'selected':''}>Ingreso</option></select></div><div class="medium"><label for="movFilterCategoria">Categoria</label><select id="movFilterCategoria"><option value="">Todas</option>${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}" ${movementFilters.categoria===cat?'selected':''}>${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="movFilterDesde">Desde</label><input id="movFilterDesde" type="date" value="${escapeHTML(movementFilters.desde||'')}" /></div><div class="medium"><label for="movFilterHasta">Hasta</label><input id="movFilterHasta" type="date" value="${escapeHTML(movementFilters.hasta||'')}" /></div><div class="medium" style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" id="clearMovFilters">Limpiar filtros</button></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${filtered.map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos para esos filtros.</td></tr>'}</tbody></table></div></div>
       `);
     }
-    function buildCalendarEvents(year,monthIndex){
+    buildCalendarEvents=function(year,monthIndex){
       const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`;
       const events=[];
       data.movimientos.forEach((m)=>{const day=new Date(`${m.fecha}T00:00:00`);if(day.getFullYear()===year&&day.getMonth()===monthIndex)events.push({day:day.getDate(),text:`${m.tipo==='gasto'?'Gasto':'Ingreso'} - ${m.categoria} - ${fmtMoney(parseNum(m.monto))}`,className:m.recurrenteId?'event-recurring':''});});
@@ -1544,7 +1544,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       (data.pagosMes||[]).filter((item)=>monthKey(item.fecha)===month).forEach((item)=>{const date=parseCalendarDate(item.fecha);if(date)events.push({day:date.getDate(),text:`Pago ${item.estado==='pagado'?'pagado':'pendiente'} - ${item.nombre} - ${fmtMoney(parseNum(item.monto))}`,className:item.estado==='pagado'?'event-recurring':'event-reminder'});});
       data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} - ${m.detalle||m.categoria} - ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`,className:'event-installment'});}));
       return events;
-    }
+    };
     function renderCalendarioSection(){
       const monthKeyView=monthKey(calendarCursor),title=monthLabel(monthKeyView),rows=upcomingAgendaRows(12),cards=cardStatementRows(monthKeyView),subs=(data.suscripciones||[]),pagos=(data.pagosMes||[]).filter((item)=>monthKey(item.fecha||monthKeyView)===monthKeyView);
       return sectionTemplate('calendario',`
@@ -1594,12 +1594,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const cuotas=deriveMetrics().cuotasMes, fondoTarget=Math.min(sueldo*.1,Math.max(0,(deriveMetrics().fondoMeta||0)-parseNum(data.fondo.ahorrado))), inversion=sueldo*.08, vida=Math.max(0,sueldo-cuotas-fondoTarget-inversion);
       return{sueldo,cuotas,fondoTarget,inversion,vida};
     }
-    function monthPaymentRows(){
+    monthPaymentRows=function(){
       const recurrent=pendingRecurringTemplates(currentMonth).map((item)=>({id:item.id,nombre:item.nombre,monto:item.monto,fecha:dateInputValue(monthDateFromDay(currentMonth,item.dia||1)),estado:'pendiente',source:'recurrente'}));
       const manual=(data.pagosMes||[]).filter((item)=>monthKey(item.fecha||currentMonth)===currentMonth).map((item)=>({...item,source:'pago'}));
       const subs=(data.suscripciones||[]).filter((item)=>item.activo!==false).map((item)=>({id:item.id,nombre:item.nombre,monto:item.monto,fecha:dateInputValue(monthDateFromDay(currentMonth,item.dia||1)),estado:'pendiente',source:'suscripcion'}));
       return [...manual,...recurrent,...subs].sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
-    }
+    };
     function checklistRows(){
       const base=[
         ['cuotas','Cuotas pagadas'],
@@ -1629,7 +1629,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       });
       return count;
     }
-    function renderInicio(){
+    renderInicio=function(){
       const metrics=deriveMetrics(),
             alerts=autoAlerts().slice(0,3),
             agenda=upcomingAgendaRows(4),
@@ -1673,7 +1673,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium card"><div class="card-head"><h2>Cuotas y planes</h2><span class="pill">En curso</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}<div class="list-item"><div><strong>Compras planeadas</strong><span>${planesActivos.length?`${planesActivos.length} activas`:'Sin pendientes'}</span></div><div><strong>${fmtMoney(planesActivos.reduce((acc,plan)=>acc+Math.max(0,parseNum(plan.costo)-parseNum(plan.ahorrado)),0))}</strong><span class="muted">faltante</span></div></div></div></div>
         <div class="medium card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="list">${latestMovs.length?latestMovs.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||m.categoria)}</strong><span>${fmtDate(m.fecha)} · ${escapeHTML(m.categoria)} · ${escapeHTML(m.tipo)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos cargados.</div>'}</div></div>
       `);
-    }
+    };
     function bindSectionEvents(){
       const movForma=$('#movForma');
       if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
@@ -3416,7 +3416,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="large card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${latestMovimientos().map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Todavia no hay movimientos cargados.</td></tr>'}</tbody></table></div></div>
       `);
     }
-    function renderMovimientos(){
+    renderMovimientos=function(){
       const filtered=filteredMovimientos();
       const recurrentes=recurringRows();
       const pendingRecurring=pendingRecurringTemplates(currentMonth);
@@ -3427,7 +3427,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium card"><div class="card-head"><h2>Backup y exportacion</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div></div></div>
         <div class="large card"><div class="card-head"><h2>Historial completo</h2><span class="pill">${filtered.length} de ${data.movimientos.length}</span></div><div class="grid" style="margin-bottom:12px"><div class="medium"><label for="movFilterQuery">Buscar</label><input id="movFilterQuery" value="${escapeHTML(movementFilters.query||'')}" placeholder="detalle, cuenta, categoria..." /></div><div class="medium"><label for="movFilterTipo">Tipo</label><select id="movFilterTipo"><option value="">Todos</option><option value="gasto" ${movementFilters.tipo==='gasto'?'selected':''}>Gasto</option><option value="ingreso" ${movementFilters.tipo==='ingreso'?'selected':''}>Ingreso</option></select></div><div class="medium"><label for="movFilterCategoria">Categoria</label><select id="movFilterCategoria"><option value="">Todas</option>${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}" ${movementFilters.categoria===cat?'selected':''}>${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="movFilterDesde">Desde</label><input id="movFilterDesde" type="date" value="${escapeHTML(movementFilters.desde||'')}" /></div><div class="medium"><label for="movFilterHasta">Hasta</label><input id="movFilterHasta" type="date" value="${escapeHTML(movementFilters.hasta||'')}" /></div><div class="medium" style="display:flex;align-items:flex-end"><button type="button" class="btn-soft" id="clearMovFilters">Limpiar filtros</button></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoria</th><th>Forma</th><th>Cuenta</th><th>Detalle</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>${filtered.map((m)=>`<tr><td>${fmtDate(m.fecha)}</td><td>${escapeHTML(m.tipo)}</td><td>${escapeHTML(m.categoria)}</td><td>${escapeHTML(m.forma||'-')}</td><td>${escapeHTML(m.cuenta||'-')}</td><td>${escapeHTML(m.detalle||'-')}</td><td>${fmtMoney(parseNum(m.monto))}</td><td><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-edit-mov="${m.id}">Editar</button><button type="button" class="btn-danger" data-del-mov="${m.id}">Eliminar</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="muted">Sin movimientos para esos filtros.</td></tr>'}</tbody></table></div></div>
       `);
-    }
+    };
     function buildCalendarEvents(year,monthIndex){
       const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`;
       const events=[];
@@ -3441,7 +3441,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       data.movimientos.filter((m)=>m.forma==='cuotas'&&parseNum(m.cuotas)>=1).forEach((m)=>cuotaMonthKeys(m).forEach((key,idx)=>{const [y,mo]=key.split('-').map(Number);if(y===year&&mo-1===monthIndex)events.push({day:1,text:`Cuota ${idx+1}/${m.cuotas} - ${m.detalle||m.categoria} - ${fmtMoney(parseNum(m.monto)/parseNum(m.cuotas))}`,className:'event-installment'});}));
       return events;
     }
-    function renderCalendarioSection(){
+    renderCalendarioSection=function(){
       const monthKeyView=monthKey(calendarCursor),title=monthLabel(monthKeyView),rows=upcomingAgendaRows(12),cards=cardStatementRows(monthKeyView);
       return sectionTemplate('calendario',`
         <div class="medium card"><div class="card-head"><h2>Nuevo recordatorio</h2><span class="pill">Vencimientos</span></div><form id="remForm" class="grid"><div class="medium"><label for="remTitulo">Titulo</label><input id="remTitulo" required placeholder="ej. Expensas" /></div><div class="medium"><label for="remFecha">Fecha</label><input id="remFecha" type="date" required /></div><div class="medium"><label for="remMonto">Monto</label><input id="remMonto" type="number" min="0" step="0.01" /></div><div class="medium"><label for="remCategoria">Categoria</label><select id="remCategoria"></select></div><div class="large"><label for="remNotas">Notas</label><input id="remNotas" placeholder="ej. pagar antes del cierre" /></div><div class="large"><button type="submit">Guardar recordatorio</button></div></form></div>
@@ -3449,7 +3449,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="large card"><div class="card-head"><h2>Agenda</h2><span class="pill">${rows.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${rows.length?rows.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.notas?` · ${escapeHTML(item.notas)}`:''}</span></div><div style="min-width:170px;text-align:right"><strong>${fmtMoney(item.monto)}</strong><span class="muted">${item.source==='tarjeta'?'Resumen de tarjeta':item.estado==='hecho'?'Resuelto':item.estado==='vencido'?'Vencido':'Pendiente'}</span>${item.source==='recordatorio'?`<div class="setup-actions" style="margin-top:8px;justify-content:flex-end"><button type="button" class="btn-soft" data-toggle-rem="${item.id}">${item.estado==='hecho'?'Reabrir':'Marcar hecho'}</button><button type="button" class="btn-danger" data-del-rem="${item.id}">Eliminar</button></div>`:''}</div></div>`).join(''):'<div class="status ok">Todavia no hay recordatorios cargados.</div>'}</div></div>
         <div class="large card"><div class="card-head"><h2>Calendario mensual</h2><span class="pill">${escapeHTML(title)}</span></div><div class="setup-actions" style="margin-top:0;margin-bottom:12px"><button type="button" class="btn-soft" id="calendarPrev">Mes anterior</button><button type="button" class="btn-soft" id="calendarNext">Mes siguiente</button><button type="button" class="btn-soft" id="calendarToday">Ir a hoy</button></div><div class="calendar" id="calendarGrid"></div></div>
       `);
-    }
+    };
     function renderCalendario(){
       const root=$('#calendarGrid');if(!root)return;
       const year=calendarCursor.getFullYear(),monthIndex=calendarCursor.getMonth(),firstDay=new Date(year,monthIndex,1),lastDay=new Date(year,monthIndex+1,0),offset=(firstDay.getDay()+6)%7,days=lastDay.getDate(),events=buildCalendarEvents(year,monthIndex),weekDays=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'],cells=[];
@@ -3508,7 +3508,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="list">${latestMovs.length?latestMovs.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||m.categoria)}</strong><span>${fmtDate(m.fecha)} · ${escapeHTML(m.categoria)} · ${escapeHTML(m.tipo)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos cargados.</div>'}</div></div>
       `);
     }
-    function bindSectionEvents(){
+    bindSectionEvents=function(){
       const movForma=$('#movForma');
       if(movForma){const refresh=()=>document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=movForma.value==='cuotas'?'':'none');movForma.addEventListener('change',refresh);refresh();}
       $('#movFecha')?.addEventListener('change',()=>{if($('#movForma')?.value==='cuotas'&&!$('#movEditId')?.value)$('#movInicioCobro').value=monthKey($('#movFecha').value);});
@@ -3585,13 +3585,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#closeCategoryModal')?.addEventListener('click',()=>$('#categoryModal')?.classList.add('hidden'));
       $('#categoryModal')?.addEventListener('click',(event)=>{if(event.target?.id==='categoryModal')$('#categoryModal')?.classList.add('hidden');});
       document.querySelectorAll('[data-check-id]').forEach((input)=>input.addEventListener('change',()=>{data.checklist=data.checklist||{};const month=input.dataset.checkMonth;data.checklist[month]=data.checklist[month]||{};data.checklist[month][input.dataset.checkId]=input.checked;persistAndRender();}));
-    }
+    };
     const finalBuildCalendarEvents=buildCalendarEvents;
     function buildCalendarEvents(year,monthIndex){
-      const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`,events=finalBuildCalendarEvents(year,monthIndex);
+      const month=`${year}-${String(monthIndex+1).padStart(2,'0')}`,events=finalBuildCalendarEvents(year,monthIndex).filter((event)=>!String(event.text||'').startsWith('Recurrente pendiente'));
       (data.suscripciones||[]).filter((item)=>item.activo!==false).forEach((item)=>{const date=monthDateFromDay(month,item.dia||1);events.push({day:date.getDate(),text:`Suscripcion - ${item.nombre} - ${fmtMoney(parseNum(item.monto))}`,className:'event-reminder'});});
       (data.pagosMes||[]).filter((item)=>monthKey(item.fecha||month)===month).forEach((item)=>{const day=new Date(`${item.fecha}T00:00:00`);events.push({day:day.getDate(),text:`Pago - ${item.nombre} - ${fmtMoney(parseNum(item.monto))}`,className:item.estado==='hecho'?'event-card-close':'event-card-due'});});
       return events;
+    }
+    const finalMonthPaymentRows=monthPaymentRows;
+    function monthPaymentRows(){
+      return finalMonthPaymentRows().filter((item)=>item.source!=='recurrente');
     }
     const finalRenderInicio=renderInicio;
     function renderInicio(){
@@ -3605,7 +3609,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const frecuentes=data.frecuentes||[];
       const frequentCard=`<div class="medium card"><div class="card-head"><h2>Gastos frecuentes</h2><span class="pill">${frecuentes.length} guardados</span></div><form id="frequentForm" class="grid"><div class="medium"><label for="freqNombre">Nombre</label><input id="freqNombre" required placeholder="ej. Bondi" /></div><div class="medium"><label for="freqMonto">Monto</label><input id="freqMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="freqCategoria">Categoria</label><select id="freqCategoria">${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="freqCuenta">Cuenta</label><input id="freqCuenta" placeholder="opcional" /></div><div class="large"><label for="freqDetalle">Nota</label><input id="freqDetalle" placeholder="opcional" /></div><div class="large"><button type="submit">Guardar acceso rapido</button></div></form><div class="list" style="margin-top:12px">${frecuentes.length?frecuentes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${escapeHTML(item.categoria||'Otros')} · ${fmtMoney(parseNum(item.monto))}</span></div><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-use-frequent="${item.id}">Usar hoy</button><button type="button" class="btn-danger" data-del-frequent="${item.id}">Eliminar</button></div></div>`).join(''):'<div class="status ok">Guarda consumos repetidos para cargarlos en un toque.</div>'}</div></div>`;
       const toolsCard=`<div class="medium card"><div class="card-head"><h2>Backup, importacion y deshacer</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div><div class="list-item"><div><strong>Deshacer ultimo movimiento</strong><span>Elimina el movimiento mas reciente si fue un error</span></div><button type="button" class="btn-soft" id="undoLastMovement">Deshacer</button></div></div><label for="importMovText" style="margin-top:12px">Importar movimientos</label><textarea id="importMovText" rows="4" placeholder="fecha,monto,categoria,detalle&#10;2026-05-10,2500,Transporte,Sube"></textarea><button type="button" class="btn-soft" id="importMovBtn" style="margin-top:10px">Importar texto</button></div>`;
-      return finalRenderMovimientos()
+      let rendered=finalRenderMovimientos();
+      const recurringStart=rendered.indexOf('<div class="medium card"><div class="card-head"><h2>Recurrentes del mes</h2>');
+      const categoriesStart=rendered.indexOf('<div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2>',recurringStart);
+      if(recurringStart>=0&&categoriesStart>recurringStart)rendered=rendered.slice(0,recurringStart)+rendered.slice(categoriesStart);
+      return rendered
         .replace('<div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2>',`${frequentCard}<div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2>`)
         .replace(/<div class="medium card"><div class="card-head"><h2>Backup y exportacion<\/h2>[\s\S]*?<\/div><\/div>\s*<div class="large card"><div class="card-head"><h2>Historial completo<\/h2>/,`${toolsCard}<div class="large card"><div class="card-head"><h2>Historial completo</h2>`);
     }
