@@ -443,7 +443,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <p>OrganizÃ¡ gastos, cuotas, inversiones y metas sin perder de vista el mes.</p>
       </div>
       <div class="top-actions">
-        <div class="sync-pill" id="syncState">Modo local activo</div>
+        <div class="sync-pill" id="syncState">Conectando con Supabase...</div>
         <button type="button" class="btn-soft" id="btnRelock">Salir</button>
         <div class="tabs" id="tabs"></div>
       </div>
@@ -469,7 +469,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     DEF.fondo.aportes=[];
     let data=clone(DEF),
         liveConfig=null,
-        syncMode='local',
+        syncMode='remote',
         sbClient=null,
         sbChannel=null,
         sbPoller=null,
@@ -905,21 +905,16 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return Boolean(cfg&&cfg.url&&cfg.key&&cfg.code);
     }
     function loadConfig(){
-      try{
-        const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||'null');
-        return hasRemoteConfig(saved)?saved:{...EMBEDDED_CONFIG};
-      }catch(err){
-        return {...EMBEDDED_CONFIG};
-      }
+      return {...EMBEDDED_CONFIG};
     }
-    function saveConfig(cfg){
-      const next=hasRemoteConfig(cfg)?cfg:{...EMBEDDED_CONFIG};
+    function saveConfig(cfg=EMBEDDED_CONFIG){
+      const next={...EMBEDDED_CONFIG};
       try{localStorage.setItem(CONFIG_KEY,JSON.stringify(next));}catch(err){}
       liveConfig=next;
     }
     function clearConfig(){localStorage.removeItem(CONFIG_KEY);liveConfig={...EMBEDDED_CONFIG};}
     function ensureLiveConfig(){
-      if(!hasRemoteConfig(liveConfig))saveConfig(loadConfig());
+      saveConfig(EMBEDDED_CONFIG);
       return liveConfig;
     }
     function setLoginStatus(type,text){const el=$('#loginStatus');if(!el)return;el.className='status '+type;el.textContent=repairMojibakeString(text);}
@@ -1824,7 +1819,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#usdInput')?.addEventListener('input',()=>convertBlue('usd'));
     }
     async function initRealtimeSync(){
-      if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
+      saveConfig(EMBEDDED_CONFIG);
+      if(!hasRemoteConfig(liveConfig)){syncMode='remote';sync('err','No se pudo cargar la conexion embebida');lockApp('No pudimos cargar la conexion. Recarga la pagina.');return;}
       const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
       syncMode='remote';sync('warn','Sincronizando con Supabase...');
       const remote=await readRemoteRow(client,safeCode);
@@ -2662,9 +2658,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#assistantForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('#assistantInput');const text=input?.value.trim();if(!text)return;data.chat=data.chat||[];data.chat.push({id:uid(),role:'user',text});data.chat.push({id:uid(),role:'assistant',text:assistantReply(text)});if(input)input.value='';persistAndRender({localOnly:true});});
     }
     function init(){
-      liveConfig=loadConfig();
-      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
-      saveConfig(liveConfig);
+      saveConfig(EMBEDDED_CONFIG);
       data=loadLocal();
       enhanceLoginOverlay();
       createTabs();
@@ -2807,7 +2801,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
     }
     function refreshAccessOverlays(){
-      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
+      saveConfig(EMBEDDED_CONFIG);
       const needsSetup=!hasRemoteConfig(liveConfig);
       if(needsSetup){
         $('#setupOverlay')?.classList.remove('hidden');
@@ -2825,7 +2819,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
     }
     function forceEmbeddedConnectionUI(){
-      liveConfig=hasRemoteConfig(liveConfig)?liveConfig:{...EMBEDDED_CONFIG};
+      saveConfig(EMBEDDED_CONFIG);
       $('#setupOverlay')?.classList.add('hidden');
       syncLoginPanel();
       if(!isUnlocked)$('#loginOverlay')?.classList.remove('hidden');
@@ -3728,7 +3722,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro, vencimientos, suscripciones y pagos puntuales. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
     }
     async function initRealtimeSync(){
-      if(!liveConfig||!liveConfig.url||!liveConfig.code||!liveConfig.key){syncMode='local';sync('warn','Modo local activo');return;}
+      saveConfig(EMBEDDED_CONFIG);
+      if(!hasRemoteConfig(liveConfig)){syncMode='remote';sync('err','No se pudo cargar la conexion embebida');lockApp('No pudimos cargar la conexion. Recarga la pagina.');return;}
       const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
       syncMode='remote';sync('warn','Sincronizando con Supabase...');
       const remote=await readRemoteRow(client,safeCode);
@@ -3779,9 +3774,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       refreshAccessOverlays();
     }
     function init(){
-      liveConfig=loadConfig();
-      if(!hasRemoteConfig(liveConfig))liveConfig={...EMBEDDED_CONFIG};
-      saveConfig(liveConfig);
+      saveConfig(EMBEDDED_CONFIG);
       data=loadLocal();
       const repairedPayments=normalizeInstallmentPayments(data);
       if(repairedPayments)saveLocal();
