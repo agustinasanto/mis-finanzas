@@ -3606,6 +3606,17 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const methodIndex=TAB_LIST.findIndex(([id])=>id==='metodo');
       TAB_LIST.splice(methodIndex>=0?methodIndex+1:TAB_LIST.length,0,['ahorros','Ahorros']);
     }
+    const cuotasTab=TAB_LIST.find((tab)=>tab[0]==='cuotas');
+    if(cuotasTab)cuotasTab[1]='Tarjeta de credito';
+    function cancelCreditPurchase(id){
+      const item=data.movimientos.find((mov)=>mov.id===id&&mov.tipo==='gasto'&&mov.forma==='cuotas');
+      if(!item)return false;
+      item.cancelada=true;
+      item.canceladaEn=todayDateKey();
+      item.cuotaActual=parseNum(item.cuotas)+1;
+      item.detalle=`${item.detalle||item.categoria||'Compra en tarjeta'} (cancelada por devolucion)`;
+      return true;
+    }
     function sectionInner(html){
       const marker='<div class="grid">';
       const start=String(html||'').indexOf(marker);
@@ -3635,6 +3646,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
       return finalRenderMetodo()
         .replace(/<div class="hint" style="margin-top:12px">En el bloque de ahorro[\s\S]*?<\/div>/,'<div class="hint" style="margin-top:12px">La administracion de ahorro, fondo, metas e inversiones esta centralizada en la solapa Ahorros.</div>')
         .replace(/<div class="hint" style="margin-top:12px">Referencia actual:[\s\S]*?<\/div>/,'<div class="hint" style="margin-top:12px">La administracion de ahorro, fondo, metas e inversiones esta centralizada en la solapa Ahorros.</div>');
+    };
+    const finalRenderCuotas=renderCuotas;
+    renderCuotas=function(){
+      return finalRenderCuotas()
+        .replaceAll('Cuotas','Tarjeta de credito')
+        .replace(/(<button type="button" class="btn-soft" data-edit-cuota="([^"]+)">Editar compra<\/button>)(<button type="button" class="btn-soft" data-(?:next|pay)-cuota="[^"]+"[^>]*>[^<]+<\/button>)/g,'$1<button type="button" class="btn-danger" data-cancel-cuota="$2">Cancelar por devolucion</button>$3');
     };
     const finalRenderInicio=renderInicio;
     renderInicio=function(){
@@ -3681,6 +3698,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-toggle-payment]').forEach((btn)=>btn.addEventListener('click',()=>{const item=(data.pagosMes||[]).find((row)=>row.id===btn.dataset.togglePayment);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
       document.querySelectorAll('[data-del-payment]').forEach((btn)=>btn.addEventListener('click',()=>{data.pagosMes=(data.pagosMes||[]).filter((item)=>item.id!==btn.dataset.delPayment);persistAndRender();}));
       $('#ahorroLibreForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#ahorroLibreMonto')?.value);if(monto<=0)return;data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha:$('#ahorroLibreFecha')?.value||todayDateKey(),categoria:'Ahorro',forma:'contado',cuenta:'Ahorro libre',cuotas:1,cuotaActual:1,inicioCobro:monthKey($('#ahorroLibreFecha')?.value||todayDateKey()),detalle:$('#ahorroLibreDetalle')?.value.trim()||'Ahorro libre'});event.target.reset();$('#ahorroLibreFecha').value=todayDateKey();persistAndRender();});
+      document.querySelectorAll('[data-cancel-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(cancelCreditPurchase(btn.dataset.cancelCuota))persistAndRender();}));
     };
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
@@ -3695,7 +3713,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(text.includes('recurrent')||text.includes('suscrip'))return (data.suscripciones||[]).filter((item)=>item.activo!==false).length?`Ahora los pagos mensuales repetidos viven en Suscripciones. Tenes ${(data.suscripciones||[]).filter((item)=>item.activo!==false).length} activas y se muestran en Calendario.`:`No tenes suscripciones activas cargadas. Si un pago se repite todos los meses, agregalo desde Calendario > Suscripciones.`;
       if(text.includes('invert')||text.includes('mercado')||text.includes('dolar')||text.includes('mep')||text.includes('cedear')||text.includes('fci')||text.includes('cripto'))return deriveMarketAdvice();
       if(text.includes('bajar')||text.includes('recortar')||text.includes('disminuir')||text.includes('ajustar'))return cutSuggestions.length?`Hoy miraria ${cutSuggestions.map((item)=>item.cat).join(', ')}. ${cutSuggestions[0].cat}: ${cutSuggestions[0].reason}`:'Todavia no veo categorias variables claras para recortar; el mes viene bastante ordenado.';
-      if(text.includes('cuota'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cuotas activas por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga, ahora podes editar la compra desde la pestana Cuotas.`;
+      if(text.includes('cuota')||text.includes('tarjeta'))return `Para ${monthLabel(cuotasViewMonth)} tenes ${activeInstallmentsForMonth(cuotasViewMonth).length} cargos de tarjeta activos por ${fmtMoney(activeInstallmentsForMonth(cuotasViewMonth).reduce((acc,item)=>acc+item.montoCuota,0))}. Si hay un error de carga podes editar la compra, y si hubo devolucion podes cancelarla desde Tarjeta de credito.`;
       if(text.includes('presupuesto')||text.includes('supermercado')||text.includes('categoria'))return topBudget?`La categoria con mas aire ahora es ${topBudget.cat}: lleva ${fmtMoney(topBudget.gastado)} sobre ${fmtMoney(topBudget.presupuesto||0)}. Si queres, usa ese margen como referencia y evita tocar el colchon del mes.`:`Todavia no hay suficientes presupuestos cargados. Si completas la pestana Presupuestos, te puedo orientar mejor por categoria.`;
       if(text.includes('ahorro')||text.includes('fondo')||text.includes('inversion'))return `En el metodo mensual, el ahorro ahora toma ahorro libre mas aportes al fondo de emergencia. Este mes llevas ${fmtMoney(ahorroGeneralMes(currentMonth))} en ahorro libre, ${fmtMoney(metrics.aportesFondoMes)} al fondo y ${fmtMoney(metrics.inversionesMes)} invertidos.`;
       return `Puedo ayudarte con cierre de mes, cuotas, presupuestos, ahorro, vencimientos, suscripciones y pagos puntuales. Hoy tenes ${fmtMoney(metrics.saldo)} de saldo del mes y ${fmtMoney(metrics.cuotasMes)} comprometidos en cuotas actuales.`;
