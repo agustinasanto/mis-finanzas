@@ -304,7 +304,7 @@
   </style>
 </head>
 <body>
-  <div class="overlay" id="setupOverlay">
+  <div class="overlay hidden" id="setupOverlay">
     <div class="overlay-card">
       <div class="card-head">
         <div>
@@ -2824,6 +2824,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       else lockApp('Ingresá con tu usuario y contraseña para desbloquear la app.');
       syncOverlayScrollLock();
     }
+    function forceEmbeddedConnectionUI(){
+      liveConfig=hasRemoteConfig(liveConfig)?liveConfig:{...EMBEDDED_CONFIG};
+      $('#setupOverlay')?.classList.add('hidden');
+      syncLoginPanel();
+      if(!isUnlocked)$('#loginOverlay')?.classList.remove('hidden');
+      syncOverlayScrollLock();
+    }
     async function handleLoginSubmit(event){
       event.preventDefault();
       const username=String($('#loginUsername')?.value||'').trim().toLowerCase();
@@ -3799,7 +3806,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Igual podés entrar con tu usuario y tu contraseña mientras se estabiliza.':'La conexión con Supabase ya está cargada. Entrá con tu usuario y tu contraseña para seguir.');
         });
       }else{
-        refreshAccessOverlays();
+        forceEmbeddedConnectionUI();
         sync('warn','Configuración pendiente');
       }
       resetMovimientoForm();
