@@ -3601,6 +3601,35 @@ alter publication supabase_realtime add table public.mf_states;</div>
     autoAlerts=function(){
       return finalAutoAlerts().filter((alert)=>!String(alert.text||'').toLowerCase().includes('recurrent'));
     };
+    if(!TAB_LIST.some(([id])=>id==='ahorros')){
+      for(let i=TAB_LIST.length-1;i>=0;i--)if(TAB_LIST[i][0]==='inversiones'||TAB_LIST[i][0]==='fondo')TAB_LIST.splice(i,1);
+      const methodIndex=TAB_LIST.findIndex(([id])=>id==='metodo');
+      TAB_LIST.splice(methodIndex>=0?methodIndex+1:TAB_LIST.length,0,['ahorros','Ahorros']);
+    }
+    function sectionInner(html){
+      const marker='<div class="grid">';
+      const start=String(html||'').indexOf(marker);
+      const end=String(html||'').lastIndexOf('</div></section>');
+      return start>=0&&end>start?String(html).slice(start+marker.length,end):'';
+    }
+    function renderAhorros(){
+      const metrics=deriveMetrics(),
+            ahorroLibreMes=ahorroGeneralMes(currentMonth),
+            inversionesMes=(data.inversiones||[]).filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0),
+            metasTotal=(data.metas||[]).reduce((acc,meta)=>acc+parseNum(meta.actual),0),
+            metasObjetivo=(data.metas||[]).reduce((acc,meta)=>acc+parseNum(meta.objetivo),0),
+            ahorroLibreRows=(data.movimientos||[]).filter((m)=>m.tipo==='gasto'&&m.categoria==='Ahorro').sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,8);
+      const libreCard=`<div class="large card"><div class="card-head"><h2>Mapa de ahorros</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="inline-fields"><div class="list-item"><div><strong>Fondo de emergencia</strong><span>${metrics.fondoPct}% de la meta de 6 meses</span></div><div><strong>${fmtMoney(parseNum(data.fondo.ahorrado))}</strong></div></div><div class="list-item"><div><strong>Inversiones del mes</strong><span>Plata separada para invertir</span></div><div><strong>${fmtMoney(inversionesMes)}</strong></div></div><div class="list-item"><div><strong>Metas especificas</strong><span>${(data.metas||[]).length} objetivos definidos</span></div><div><strong>${fmtMoney(metasTotal)}</strong><span class="muted">de ${fmtMoney(metasObjetivo)}</span></div></div><div class="list-item"><div><strong>Ahorro libre</strong><span>Sin objetivo concreto</span></div><div><strong>${fmtMoney(ahorroLibreMes)}</strong></div></div></div></div><div class="medium card"><div class="card-head"><h2>Ahorro libre</h2><span class="pill">Sin objetivo</span></div><form id="ahorroLibreForm" class="grid"><div class="medium"><label for="ahorroLibreMonto">Monto</label><input id="ahorroLibreMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="ahorroLibreFecha">Fecha</label><input id="ahorroLibreFecha" type="date" required value="${todayDateKey()}" /></div><div class="large"><label for="ahorroLibreDetalle">Detalle</label><input id="ahorroLibreDetalle" placeholder="ej. Lo separo para guardar" /></div><div class="large"><button type="submit">Registrar ahorro libre</button></div></form><div class="hint" style="margin-top:12px">Esto se guarda como movimiento en categoria Ahorro para que descuente del balance mensual, sin atarlo a una meta.</div></div><div class="medium card"><div class="card-head"><h2>Ultimos ahorros libres</h2><span class="pill">${ahorroLibreRows.length} registros</span></div><div class="list">${ahorroLibreRows.length?ahorroLibreRows.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||'Ahorro libre')}</strong><span>${fmtDate(m.fecha)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong><button type="button" class="btn-danger" data-del-mov="${m.id}" style="margin-top:8px">Eliminar</button></div></div>`).join(''):'<div class="status ok">Todavia no registraste ahorro libre.</div>'}</div></div>`;
+      return sectionTemplate('ahorros',`${libreCard}${sectionInner(renderFondo())}${sectionInner(renderInversiones())}`);
+    }
+    const finalRenderAll=renderAll;
+    renderAll=function(){
+      if(activeTab==='inversiones'||activeTab==='fondo')activeTab='ahorros';
+      $('#sections').innerHTML=[renderInicio(),renderMovimientos(),renderPresupuestos(),renderMetodo(),renderAhorros(),renderCuotas(),renderPlanes(),renderCalendarioSection()].join('');
+      populateCategorySelects();bindSectionEvents();renderSections();convertBlue('ars');repairMojibake();syncLoginPanel();
+      const assistantRoot=$('#assistantMessages');
+      if(assistantRoot)assistantRoot.innerHTML=(data.chat||[]).slice(-8).map((msg)=>`<div class="list-item"><div><strong>${msg.role==='user'?'Vos':'Asistente'}</strong><span>${escapeHTML(msg.text)}</span></div></div>`).join('')||'<div class="status ok">Todavia no hiciste ninguna consulta.</div>';
+    };
     const finalRenderInicio=renderInicio;
     renderInicio=function(){
       const html=finalRenderInicio();
@@ -3641,6 +3670,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#paymentForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.pagosMes=data.pagosMes||[];data.pagosMes.unshift({id:uid(),nombre:$('#payNombre').value.trim(),monto:parseNum($('#payMonto').value),fecha:$('#payFecha').value,categoria:$('#payCategoria').value,estado:'pendiente'});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-toggle-payment]').forEach((btn)=>btn.addEventListener('click',()=>{const item=(data.pagosMes||[]).find((row)=>row.id===btn.dataset.togglePayment);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
       document.querySelectorAll('[data-del-payment]').forEach((btn)=>btn.addEventListener('click',()=>{data.pagosMes=(data.pagosMes||[]).filter((item)=>item.id!==btn.dataset.delPayment);persistAndRender();}));
+      $('#ahorroLibreForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#ahorroLibreMonto')?.value);if(monto<=0)return;data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha:$('#ahorroLibreFecha')?.value||todayDateKey(),categoria:'Ahorro',forma:'contado',cuenta:'Ahorro libre',cuotas:1,cuotaActual:1,inicioCobro:monthKey($('#ahorroLibreFecha')?.value||todayDateKey()),detalle:$('#ahorroLibreDetalle')?.value.trim()||'Ahorro libre'});event.target.reset();$('#ahorroLibreFecha').value=todayDateKey();persistAndRender();});
     };
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
