@@ -1158,6 +1158,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(error)throw error;
       return row;
     }
+    function withTimeout(promise,ms,label='timeout'){
+      let timer;
+      const timeout=new Promise((_,reject)=>{
+        timer=setTimeout(()=>reject(new Error(label)),ms);
+      });
+      return Promise.race([promise,timeout]).finally(()=>clearTimeout(timer));
+    }
     async function writeRemoteRow(client,code,payload){
       const stamp=new Date().toISOString();
       const { error } = await client.from(SUPABASE_TABLE).upsert({code,payload,updated_at:stamp},{onConflict:'code'});
@@ -1823,7 +1830,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!hasRemoteConfig(liveConfig)){syncMode='remote';sync('err','No se pudo cargar la conexion embebida');lockApp('No pudimos cargar la conexion. Recarga la pagina.');return;}
       const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
       syncMode='remote';sync('warn','Sincronizando con Supabase...');
-      const remote=await readRemoteRow(client,safeCode);
+      const remote=await withTimeout(readRemoteRow(client,safeCode),12000,'supabase-timeout');
       if(remote&&remote.payload){data=mergeWithDefaults(remote.payload);lastRemoteStamp=remote.updated_at||'';saveLocal();}else{await writeRemoteRow(client,safeCode,data);}
       sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{if(skipRemote){skipRemote=false;return;}if(payload.new&&payload.new.payload){lastRemoteStamp=payload.new.updated_at||lastRemoteStamp;data=mergeWithDefaults(payload.new.payload);saveLocal();renderAll();refreshAccessOverlays();sync('ok','Cambios recibidos desde Supabase');}}).subscribe();
       sbPoller=setInterval(async()=>{try{const row=await readRemoteRow(client,safeCode);if(row&&row.updated_at&&row.updated_at!==lastRemoteStamp&&!skipRemote){lastRemoteStamp=row.updated_at;data=mergeWithDefaults(row.payload||{});saveLocal();renderAll();refreshAccessOverlays();sync('ok','Cambios actualizados');}}catch(error){}},15000);
@@ -3726,18 +3733,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!hasRemoteConfig(liveConfig)){syncMode='remote';sync('err','No se pudo cargar la conexion embebida');lockApp('No pudimos cargar la conexion. Recarga la pagina.');return;}
       const {client,safeCode}=await connectSupabase(liveConfig.url,liveConfig.key,liveConfig.code);
       syncMode='remote';sync('warn','Sincronizando con Supabase...');
-      const remote=await readRemoteRow(client,safeCode);
+      const remote=await withTimeout(readRemoteRow(client,safeCode),12000,'supabase-timeout');
       if(remote&&remote.payload){
         data=mergeWithDefaults(remote.payload);
         const presetChanged=ensurePresetAccess();
         const paymentsChanged=normalizeInstallmentPayments(data);
         lastRemoteStamp=remote.updated_at||'';
         saveLocal();
-        if(presetChanged||paymentsChanged)await writeRemoteRow(client,safeCode,data);
+        if(presetChanged||paymentsChanged)await withTimeout(writeRemoteRow(client,safeCode,data),12000,'supabase-timeout');
       }else{
         ensurePresetAccess();
         normalizeInstallmentPayments(data);
-        await writeRemoteRow(client,safeCode,data);
+        await withTimeout(writeRemoteRow(client,safeCode,data),12000,'supabase-timeout');
       }
       sbChannel=client.channel(`mf-${safeCode}`).on('postgres_changes',{event:'*',schema:'public',table:SUPABASE_TABLE,filter:`code=eq.${safeCode}`},(payload)=>{
         if(skipRemote){skipRemote=false;return;}
@@ -3774,15 +3781,18 @@ alter publication supabase_realtime add table public.mf_states;</div>
       refreshAccessOverlays();
     }
     function init(){
-      saveConfig(EMBEDDED_CONFIG);
+      try{
+        saveConfig(EMBEDDED_CONFIG);
       data=loadLocal();
       const repairedPayments=normalizeInstallmentPayments(data);
       if(repairedPayments)saveLocal();
       ensurePresetAccess();
       enhanceLoginOverlay();
+      sync('warn','Preparando acceso...');
+      forceEmbeddedConnectionUI();
       createTabs();
       repairMojibake(document.body);
-      renderAll();
+      try{renderAll();}catch(renderError){console.error('Render inicial fallido',renderError);sync('warn','La app abrio el acceso, pero una tarjeta necesita recargarse.');}
       initStaticEvents();
       bindAccessEvents();
       syncLoginPanel();
@@ -3791,9 +3801,16 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(hasRemoteConfig(ensureLiveConfig())){
         syncMode='remote';
         $('#cfgUrl').value=liveConfig.url;$('#cfgKey').value=liveConfig.key;$('#cfgCode').value=liveConfig.code;refreshAccessOverlays();
+        const startupWatch=setTimeout(()=>{
+          const text=$('#syncState')?.textContent||'';
+          if(/Conectando|Sincronizando|Preparando/i.test(text)){
+            sync('warn','Supabase esta tardando, pero ya podes iniciar sesion.');
+            lockApp('Entra con tu usuario y contraseña. La sincronizacion se completa apenas Supabase responda.');
+          }
+        },7000);
         initRealtimeSync().catch((error)=>{
           const info=classifySupabaseError(error);
-          sync('err',info.text);
+          sync('err',info.code==='unknown'&&String(error?.message||'').includes('supabase-timeout')?'Supabase no respondio a tiempo. Proba recargar en unos segundos.':info.text);
           setStatus('err',info.text);
           $('#setupOverlay')?.classList.add('hidden');
           lockApp(info.code==='network'?'No pudimos reconectar con Supabase ahora mismo. Igual podés entrar con tu usuario y tu contraseña mientras se estabiliza.':'La conexión con Supabase ya está cargada. Entrá con tu usuario y tu contraseña para seguir.');
@@ -3805,7 +3822,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
       resetMovimientoForm();
       if($('#quickFecha'))$('#quickFecha').value=todayDateKey();
       if($('#fondoAporteFecha'))$('#fondoAporteFecha').value=todayDateKey();
-      syncOverlayScrollLock();
+        syncOverlayScrollLock();
+      }catch(error){
+        console.error('Inicio fallido',error);
+        $('#setupOverlay')?.classList.add('hidden');
+        enhanceLoginOverlay();
+        syncLoginPanel();
+        lockApp('La app tuvo un problema al arrancar, pero el acceso sigue disponible. Entra con tu usuario y contraseña.');
+        sync('err','Error de arranque recuperado');
+      }
     }
     window.addEventListener('beforeunload',()=>destroySupabaseClient());
     init();
