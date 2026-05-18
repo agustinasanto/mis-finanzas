@@ -596,7 +596,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const changed=auth.username!==PRESET_ACCESS.username||auth.salt!==PRESET_ACCESS.salt||auth.passwordHash!==PRESET_ACCESS.passwordHash;
       if(!changed)return false;
       data.auth={username:PRESET_ACCESS.username,passwordHash:PRESET_ACCESS.passwordHash,salt:PRESET_ACCESS.salt,biometric};
-      clearSavedAccess();
       return true;
     }
     function randomBytes(len){
@@ -1081,6 +1080,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       setLoginStatus('ok',message);
     }
     function lockApp(message='Ingresá con tu usuario y contraseña para desbloquear la app.'){
+      if(isUnlocked)return;
       isUnlocked=false;
       syncLoginPanel();
       setLoginStatus('warn',message);
@@ -2801,6 +2801,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
     }
     function lockApp(message='Ingresá con tu usuario y contraseña para desbloquear la app.'){
+      if(isUnlocked)return;
       isUnlocked=false;
       syncLoginPanel();
       setLoginStatus('warn',message);
@@ -2808,6 +2809,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
       syncOverlayScrollLock();
     }
     function refreshAccessOverlays(){
+      if(isUnlocked){
+        $('#setupOverlay')?.classList.add('hidden');
+        $('#loginOverlay')?.classList.add('hidden');
+        syncOverlayScrollLock();
+        return;
+      }
       saveConfig(EMBEDDED_CONFIG);
       const needsSetup=!hasRemoteConfig(liveConfig);
       if(needsSetup){
