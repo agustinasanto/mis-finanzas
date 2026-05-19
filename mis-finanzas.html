@@ -1643,6 +1643,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
             fondoMes=fondoMovimientosMes(currentMonth),
             comparison=deriveMonthComparison(),
             variablePocket=deriveVariablePocket();
+      const daily=dailySpendSignal(),
+            todayRows=movimientosGastoDia(),
+            todayTotal=todayRows.reduce((acc,m)=>acc+parseNum(m.monto),0),
+            weekRows=movimientosGastoSemana(),
+            weekTotal=weekRows.reduce((acc,m)=>acc+parseNum(m.monto),0),
+            hormigas=hormigaRows(),
+            salarySuggestion=salaryModeSuggestion(),
+            payments=monthPaymentRows(),
+            checklist=checklistRows();
       const fondoResumen={
         aportes:fondoMes.filter((item)=>item.tipo!=='retiro').reduce((acc,item)=>acc+item.monto,0),
         retiros:fondoMes.filter((item)=>item.tipo==='retiro').reduce((acc,item)=>acc+item.monto,0)
@@ -1982,6 +1991,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=$('#movForma').value==='cuotas'?'':'none');
     }
     function resetMovimientoForm(){
+      if(!$('#movForm'))return;
       $('#movForm')?.reset();
       populateMovimientoForm({fecha:todayDateKey(),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,inicioCobro:currentMonth,categoria:data.categorias[0]||'Otros'});
     }
