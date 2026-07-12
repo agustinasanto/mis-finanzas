@@ -229,6 +229,8 @@
     .status.ok{background:rgba(220,238,226,.76);border-color:#c8dfd0}
     .status.warn{background:rgba(247,228,191,.72);border-color:#ead29d}
     .status.err{background:rgba(243,200,210,.72);border-color:#dda8b6}
+    .soft-panel{min-height:100%;border:1px solid #e7dde2;border-radius:22px;padding:18px;background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(250,239,246,.82));box-shadow:0 16px 34px rgba(101,82,92,.08)}
+    .soft-panel h3{margin:6px 0 8px;font-size:1.35rem;color:#4f4148}
     .progress{background:#eee8eb;border-color:#e1d6dc}
     .progress>span{background:linear-gradient(90deg,#a8c7b4,#ddd8ee,#e9b7ca);background-size:36px 100%;animation:progressFlow 2.8s linear infinite}
     .overlay{background:rgba(248,246,244,.62)}
@@ -3715,6 +3717,25 @@ alter publication supabase_realtime add table public.mf_states;</div>
         .replaceAll('Cuotas','Tarjeta de credito')
         .replace(/(<button type="button" class="btn-soft" data-edit-cuota="([^"]+)">Editar compra<\/button>)(<button type="button" class="btn-soft" data-(?:next|pay)-cuota="[^"]+"[^>]*>[^<]+<\/button>)/g,'$1<button type="button" class="btn-danger" data-cancel-cuota="$2">Cancelar por devolucion</button>$3');
     };
+    function productivitySnapshot(){
+      const metrics=deriveMetrics(),daily=dailySpendSignal(),cuts=deriveCutSuggestions(),payments=monthPaymentRows(),agenda=upcomingAgendaRows(10);
+      const pendingPayments=payments.filter((item)=>item.estado!=='hecho');
+      const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+      const agendaSoon=agenda.filter((item)=>{
+        if(!item.when)return false;
+        const parts=String(item.when).split('-').map(Number);
+        if(parts.length<3)return false;
+        const target=new Date(parts[0],parts[1]-1,parts[2]);
+        const diff=Math.round((target-todayStart)/86400000);
+        return diff>=0&&diff<=7&&item.estado!=='hecho';
+      });
+      let action={title:'Registrar gastos de hoy',text:'Carga lo que gastaste hoy para que el saldo diario no mienta.',tab:'movimientos',cta:'Cargar movimiento'};
+      if(metrics.ingresosMes<=0)action={title:'Cargar sueldo del mes',text:'Sin ingresos cargados, los presupuestos y el disponible diario quedan incompletos.',tab:'movimientos',cta:'Cargar ingreso'};
+      else if(agendaSoon.length)action={title:'Revisar vencimientos cercanos',text:`Tenes ${agendaSoon.length} compromiso${agendaSoon.length===1?'':'s'} en los proximos 7 dias.`,tab:'calendario',cta:'Ver calendario'};
+      else if(pendingPayments.length)action={title:'Ordenar pagos pendientes',text:`Quedan ${pendingPayments.length} pago${pendingPayments.length===1?'':'s'} del mes sin marcar.`,tab:'calendario',cta:'Ver pagos'};
+      else if(cuts[0])action={title:`Mirar ${cuts[0].cat}`,text:cuts[0].reason,tab:'presupuestos',cta:'Ajustar presupuesto'};
+      return{metrics,daily,cuts,pendingPayments,agendaSoon,action};
+    }
     const finalRenderInicio=renderInicio;
     renderInicio=function(){
       let html=finalRenderInicio();
@@ -3722,13 +3743,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
         .replace(/<div class="small"><div class="kpi"><span>Fondo de emergencia<\/span>[\s\S]*?<\/div><\/div>/,'<div class="small"><div class="kpi"><span>Ahorros</span><strong>Ver solapa</strong><span>Fondo, metas, ahorro libre e inversiones estan centralizados en Ahorros</span></div></div>')
         .replace(/<div class="list-item"><div><strong>Fondo<\/strong>[\s\S]*?<\/div><\/div>/g,'')
         .replace(/<div class="list-item"><div><strong>Inversion<\/strong>[\s\S]*?<\/div><\/div>/g,'');
-      const daily=dailySpendSignal(),todayRows=movimientosGastoDia(),todayTotal=todayRows.reduce((acc,m)=>acc+parseNum(m.monto),0),weekRows=movimientosGastoSemana(),weekTotal=weekRows.reduce((acc,m)=>acc+parseNum(m.monto),0),hormigas=hormigaRows(),salarySuggestion=salaryModeSuggestion(),payments=monthPaymentRows(),checklist=checklistRows();
+      const snapshot=productivitySnapshot(),daily=snapshot.daily,todayRows=movimientosGastoDia(),todayTotal=todayRows.reduce((acc,m)=>acc+parseNum(m.monto),0),weekRows=movimientosGastoSemana(),weekTotal=weekRows.reduce((acc,m)=>acc+parseNum(m.monto),0),hormigas=hormigaRows(),salarySuggestion=salaryModeSuggestion(),payments=monthPaymentRows(),checklist=checklistRows();
       const salaryItems=salarySuggestion?[
         {nombre:'Vida diaria',pct:Math.round((parseNum(salarySuggestion.vida)/parseNum(salarySuggestion.sueldo))*100)||0,monto:salarySuggestion.vida},
         {nombre:'Fondo',pct:Math.round((parseNum(salarySuggestion.fondoTarget)/parseNum(salarySuggestion.sueldo))*100)||0,monto:salarySuggestion.fondoTarget},
         {nombre:'Inversion',pct:Math.round((parseNum(salarySuggestion.inversion)/parseNum(salarySuggestion.sueldo))*100)||0,monto:salarySuggestion.inversion}
       ]:[];
+      const commandCard=`<div class="large card"><div class="card-head"><div><h2>Centro de productividad</h2><p class="muted">Lo mas importante para mantener el mes ordenado.</p></div><span class="pill">${monthLabel(currentMonth)}</span></div><div class="grid"><div class="medium"><div class="soft-panel"><span class="muted">Accion sugerida</span><h3>${escapeHTML(snapshot.action.title)}</h3><p class="muted">${escapeHTML(snapshot.action.text)}</p><div class="setup-actions"><button type="button" data-go-tab="${snapshot.action.tab}">${escapeHTML(snapshot.action.cta)}</button><button type="button" class="btn-soft" data-open-quick="1">Carga rapida</button></div></div></div><div class="medium"><div class="list"><div class="list-item"><div><strong>Disponible por dia</strong><span>${daily.daysLeft} dias para cerrar el mes</span></div><div><strong>${fmtMoney(daily.allowance)}</strong><span class="muted">${daily.status==='warn'?'cuidar hoy':'en rango'}</span></div></div><div class="list-item"><div><strong>Pagos pendientes</strong><span>Vencimientos y pagos puntuales</span></div><strong>${snapshot.pendingPayments.length}</strong></div><div class="list-item"><div><strong>Categorias a mirar</strong><span>${snapshot.cuts[0]?escapeHTML(snapshot.cuts[0].cat):'Sin foco urgente'}</span></div><button type="button" class="btn-soft" data-go-tab="presupuestos">Ver</button></div></div></div></div></div>`;
       const extra=`<div class="medium card"><div class="card-head"><h2>Gastos hormiga</h2><span class="pill">${hormigas.length} focos</span></div><div class="list">${hormigas.length?hormigas.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(row.cat)}</strong><span>${row.count} gastos chicos este mes</span></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join(''):'<div class="status ok">No detecte gastos chicos acumulados que pesen demasiado.</div>'}</div></div><div class="medium card"><div class="card-head"><h2>Pagos del mes</h2><span class="pill">${payments.filter((item)=>item.estado!=='hecho').length} pendientes</span></div><div class="list">${payments.length?payments.slice(0,6).map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${fmtDate(item.fecha)} · ${escapeHTML(item.source)}</span></div><div><strong>${fmtMoney(parseNum(item.monto))}</strong><span class="muted">${item.estado==='hecho'?'pagado':'pendiente'}</span></div></div>`).join(''):'<div class="status ok">No hay pagos puntuales pendientes cargados.</div>'}</div></div><div class="medium card"><div class="card-head"><h2>Vista semanal</h2><span class="pill">${currentWeekRange().label}</span></div><div class="list"><div class="list-item"><div><strong>Gasto semanal</strong><span>${weekRows.length} movimientos desde el lunes</span></div><div><strong>${fmtMoney(weekTotal)}</strong></div></div><div class="list-item"><div><strong>Hoy</strong><span>${todayRows.length} movimientos · semaforo diario</span></div><div><strong>${fmtMoney(todayTotal)}</strong><span class="muted">${fmtMoney(daily.allowance)} sugerido</span></div></div></div></div><div class="medium card"><div class="card-head"><h2>Modo sueldo</h2><span class="pill">Propuesta</span></div><div class="list">${salaryItems.length?salaryItems.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${item.pct}% del sueldo detectado</span></div><div><strong>${fmtMoney(item.monto)}</strong></div></div>`).join(''):'<div class="status warn">Cuando cargues el sueldo del mes, te muestro como distribuirlo sin pasarte.</div>'}</div></div><div class="medium card"><div class="card-head"><h2>Checklist fin de mes</h2><span class="pill">${checklist.filter((item)=>item.done).length}/${checklist.length}</span></div><div class="list">${checklist.map((item)=>`<label class="list-item" style="cursor:pointer"><div><strong>${escapeHTML(item.label)}</strong><span>${escapeHTML(monthLabel(currentMonth))}</span></div><input type="checkbox" data-check-id="${item.id}" data-check-month="${currentMonth}" ${item.done?'checked':''} /></label>`).join('')}</div></div>`;
+      html=html.replace('<div class="small"><div class="kpi"><span>Saldo del mes</span>',`${commandCard}<div class="small"><div class="kpi"><span>Saldo del mes</span>`);
       return html.replace('<div class="large card"><div class="card-head"><h2>Gastos por categoria</h2>',`${extra}<div class="large card"><div class="card-head"><h2>Gastos por categoria</h2>`);
     };
     const finalRenderMovimientos=renderMovimientos;
@@ -3766,6 +3789,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       document.querySelectorAll('[data-del-payment]').forEach((btn)=>btn.addEventListener('click',()=>{data.pagosMes=(data.pagosMes||[]).filter((item)=>item.id!==btn.dataset.delPayment);persistAndRender();}));
       $('#ahorroLibreForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#ahorroLibreMonto')?.value);if(monto<=0)return;data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha:$('#ahorroLibreFecha')?.value||todayDateKey(),categoria:'Ahorro',forma:'contado',cuenta:'Ahorro libre',cuotas:1,cuotaActual:1,inicioCobro:monthKey($('#ahorroLibreFecha')?.value||todayDateKey()),detalle:$('#ahorroLibreDetalle')?.value.trim()||'Ahorro libre'});event.target.reset();$('#ahorroLibreFecha').value=todayDateKey();persistAndRender();});
       document.querySelectorAll('[data-cancel-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(cancelCreditPurchase(btn.dataset.cancelCuota))persistAndRender();}));
+      document.querySelectorAll('[data-go-tab]').forEach((btn)=>btn.addEventListener('click',()=>{activeTab=btn.dataset.goTab||'inicio';renderAll();window.scrollTo({top:0,behavior:'smooth'});}));
+      document.querySelectorAll('[data-open-quick]').forEach((btn)=>btn.addEventListener('click',()=>{$('#quickModal')?.classList.remove('hidden');if($('#quickFecha')&&!$('#quickFecha').value)$('#quickFecha').value=todayDateKey();$('#quickMonto')?.focus();}));
     };
     function assistantReply(prompt){
       const text=String(prompt||'').toLowerCase();
