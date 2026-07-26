@@ -2489,7 +2489,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         .sort((a,b)=>b[1]-a[1]);
       const baseWidth=Math.max(300,Math.round(rect.width||canvas.clientWidth||320));
       const isCompact=baseWidth<620;
-      const pointGap=isCompact?118:(values.length>9?92:108);
+      const pointGap=isCompact?92:(values.length>9?92:108);
       const cssWidth=Math.max(baseWidth,110+Math.max(1,values.length-1)*pointGap);
       const cssHeight=isCompact?330:320;
       if(scrollWrap){
@@ -2606,7 +2606,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           ctx.font='600 12px Segoe UI';
           ctx.fillStyle='#67535d';
           ctx.textAlign='center';
-          wrapCanvasText(ctx,point.label,point.x,height-51,isCompact?102:96,15,2);
+          wrapCanvasText(ctx,point.label,point.x,height-51,isCompact?82:96,15,2);
         });
         ctx.fillStyle='#90707f';
         ctx.font='12px Segoe UI';
