@@ -168,6 +168,10 @@
     .chart-scroll::-webkit-scrollbar-thumb{background:rgba(231,141,183,.34);border-radius:999px}
     .chart-scroll::-webkit-scrollbar-track{background:rgba(241,216,228,.45);border-radius:999px}
     .chart-caption{position:relative;margin-top:10px;font-size:.84rem;color:var(--muted)}
+    .chart-summary{position:relative;display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:12px;padding:14px 16px;border:1px solid rgba(168,199,180,.58);border-radius:18px;background:linear-gradient(135deg,rgba(220,235,226,.72),rgba(255,255,255,.92));box-shadow:0 10px 22px rgba(72,58,67,.06)}
+    .chart-summary span{display:block;color:var(--muted);font-size:.84rem}
+    .chart-summary strong{display:block;margin-top:2px;color:var(--text);font-size:1.28rem;letter-spacing:-.02em}
+    .chart-summary .pill{flex:0 0 auto;text-align:center}
     .fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:25;width:62px;height:62px;border-radius:999px;font-size:2rem;line-height:1;padding:0;box-shadow:0 18px 32px rgba(231,141,183,.3);animation:floatBloom 7s ease-in-out infinite}
     .modal{position:fixed;inset:0;z-index:35;display:flex;align-items:flex-end;justify-content:center;background:rgba(255,245,250,.48);backdrop-filter:blur(6px);padding:18px}
     .modal.hidden{display:none}
@@ -301,6 +305,8 @@
       .chart-shell{padding:10px}
       .chart-scroll{max-height:min(64vh,560px)}
       .chart-caption{font-size:.8rem}
+      .chart-summary{padding:12px 13px}
+      .chart-summary strong{font-size:1.12rem}
       .fab{width:60px;height:60px}
     }
   </style>
@@ -2482,9 +2488,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
         .filter(([,value])=>parseNum(value)>0)
         .sort((a,b)=>b[1]-a[1]);
       const baseWidth=Math.max(300,Math.round(rect.width||canvas.clientWidth||320));
-      const pointGap=values.length>9?82:96;
-      const cssWidth=Math.max(baseWidth,120+Math.max(1,values.length-1)*pointGap);
-      const cssHeight=Math.max(300,values.length>10?340:310);
+      const isCompact=baseWidth<620;
+      const pointGap=isCompact?118:(values.length>9?92:108);
+      const cssWidth=Math.max(baseWidth,110+Math.max(1,values.length-1)*pointGap);
+      const cssHeight=isCompact?330:320;
       if(scrollWrap){
         scrollWrap.style.maxHeight='420px';
         scrollWrap.scrollLeft=0;
@@ -2512,7 +2519,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         ctx.fillText('Todavia no hay gastos para graficar este mes.',24,42);
         return;
       }
-      const leftPad=54,rightPad=34,topPad=44,bottomPad=86;
+      const leftPad=54,rightPad=42,topPad=48,bottomPad=isCompact?104:96;
       const plotW=width-leftPad-rightPad,plotH=height-topPad-bottomPad;
       const max=Math.max(...values.map(([,value])=>parseNum(value)),1);
       const logMax=Math.log10(max+1);
@@ -2596,18 +2603,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
           ctx.font='700 12px Segoe UI';
           ctx.textAlign='center';
           ctx.fillText(chartValueLabel(point.value),point.x,Math.max(22,point.y-16));
-          ctx.save();
-          ctx.translate(point.x,height-50);
-          ctx.rotate(values.length>6?-Math.PI/7:0);
           ctx.font='600 12px Segoe UI';
           ctx.fillStyle='#67535d';
-          ctx.fillText(String(point.label).slice(0,18),0,0);
-          ctx.restore();
+          ctx.textAlign='center';
+          wrapCanvasText(ctx,point.label,point.x,height-51,isCompact?102:96,15,2);
         });
         ctx.fillStyle='#90707f';
         ctx.font='12px Segoe UI';
         ctx.textAlign='left';
-        ctx.fillText('Escala sensible: los gastos chicos se elevan para que tambien se vean.',leftPad,26);
+        ctx.fillText('Cada punto representa una categoria. Tocalo para ver sus movimientos.',leftPad,27);
       };
       const step=(ts)=>{
         if(!startTime)startTime=ts;
@@ -3500,13 +3504,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
       root.innerHTML=cells.join('');
     }
     function renderInicio(){
-      const metrics=deriveMetrics(),
+      const spendByCategory=gastosPorCategoriaMes(currentMonth),
+            totalCategorySpend=Object.values(spendByCategory).reduce((acc,value)=>acc+parseNum(value),0),
+            metrics=deriveMetrics(),
             alerts=autoAlerts().slice(0,3),
             agenda=upcomingAgendaRows(4),
             cutSuggestions=deriveCutSuggestions().slice(0,3),
             compromisos=activeInstallmentsForMonth(currentMonth).slice(0,3),
             latestMovs=latestMovimientos(5),
-            topSpending=Object.entries(gastosPorCategoriaMes(currentMonth)).sort((a,b)=>b[1]-a[1]).slice(0,3),
+            topSpending=Object.entries(spendByCategory).sort((a,b)=>b[1]-a[1]).slice(0,3),
             plansActive=(data.planes||[]).filter((plan)=>plan.estado!=='Comprada'),
             variablePocket=deriveVariablePocket(),
             comparison=deriveMonthComparison();
@@ -3544,7 +3550,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium card"><div class="card-head"><h2>Que mirar ahora</h2><span class="pill">Foco rapido</span></div><div class="list">${cutSuggestions.length?cutSuggestions.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.cat)}</strong><span>${escapeHTML(item.reason)}</span></div><div><span class="muted">${escapeHTML(item.target)}</span></div></div>`).join(''):'<div class="status ok">Por ahora no hay una categoria variable que pida freno urgente.</div>'}${alerts.length?alerts.map((a)=>`<div class="status ${a.type}">${escapeHTML(a.text)}</div>`).join(''):''}</div></div>
         <div class="medium card"><div class="card-head"><h2>Pantallazo por categoria</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="list">${categorySnapshot.length?categorySnapshot.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(row.cat)}</strong><span>${row.count} movimientos · ultimo ${fmtDate(row.lastDate)}${row.lastDetail?` · ${escapeHTML(row.lastDetail)}`:''}</span></div><div><strong>${fmtMoney(row.total)}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos este mes para resumir por categoria.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Agenda y vencimientos</h2><span class="pill">Proximos dias</span></div><div class="list">${agenda.length?agenda.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.titulo)}</strong><span>${fmtDate(item.when)}${item.categoria?` · ${escapeHTML(item.categoria)}`:''}</span></div><div><strong>${fmtMoney(item.monto)}</strong><span class="muted">${escapeHTML(item.label)}</span></div></div>`).join(''):'<div class="status ok">No tenes vencimientos cargados por ahora.</div>'}</div></div>
-        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">Canvas</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="280"></canvas></div><div class="chart-caption">En telefono podes desplazar este bloque para ver todas las categorias completas.</div></div></div>
+        <div class="large card"><div class="card-head"><h2>Gastos por categoria</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="chart-shell"><div class="chart-scroll" id="spendChartScroll"><canvas id="spendChart" width="1100" height="320"></canvas></div><div class="chart-caption">Desliza horizontalmente para ver todas las categorias y toca un punto para abrir sus movimientos.</div><div class="chart-summary"><div><span>Total gastado en el mes</span><strong>${fmtMoney(totalCategorySpend)}</strong></div><span class="pill">${Object.keys(spendByCategory).filter((cat)=>parseNum(spendByCategory[cat])>0).length} categorias</span></div></div></div>
         <div class="medium card"><div class="card-head"><h2>Cuotas y planes</h2><span class="pill">En curso</span></div><div class="list">${compromisos.length?compromisos.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.detalle)}</strong><span>${escapeHTML(item.cuenta)} · cuota ${item.cuotaNumero}/${item.cuotas}</span></div><div><strong>${fmtMoney(item.montoCuota)}</strong><span>${fmtDate(item.fecha)}</span></div></div>`).join(''):'<div class="status ok">No hay cuotas activas para este mes.</div>'}</div></div>
         <div class="medium card"><div class="card-head"><h2>Ultimos movimientos</h2><span class="pill">Recientes</span></div><div class="list">${latestMovs.length?latestMovs.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||m.categoria)}</strong><span>${fmtDate(m.fecha)} · ${escapeHTML(m.categoria)} · ${escapeHTML(m.tipo)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong></div></div>`).join(''):'<div class="status ok">Todavia no hay movimientos cargados.</div>'}</div></div>
       `);
