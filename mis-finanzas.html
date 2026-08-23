@@ -405,7 +405,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
         <div class="medium"><label for="quickTipo">Tipo</label><select id="quickTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
         <div class="medium"><label for="quickCategoria">CategorÃ­a</label><select id="quickCategoria"></select></div>
         <div class="medium"><label for="quickForma">Forma</label><select id="quickForma"><option value="contado">Contado</option><option value="cuotas">Cuotas</option></select></div>
-        <div class="medium" id="quickCuentaWrap"><label for="quickCuenta">Tarjeta / cuenta</label><input id="quickCuenta" placeholder="ej. Visa" /></div>
+        <div class="medium" id="quickCuentaWrap"><label for="quickCuenta">Tarjeta</label><select id="quickCuenta"><option value="">Seleccionar tarjeta</option></select><input id="quickCuentaNueva" placeholder="Nombre de la nueva tarjeta" style="display:none;margin-top:8px" /></div>
         <div class="medium" id="quickCuotasWrap"><label for="quickCuotas">Cantidad de cuotas</label><input id="quickCuotas" type="number" min="1" value="1" /></div>
         <div class="medium" id="quickInicioCobroWrap"><label for="quickInicioCobro">Primer mes de cobro</label><input id="quickInicioCobro" type="month" /></div>
         <div class="large"><label for="quickDetalle">Nota</label><input id="quickDetalle" placeholder="ej. Uber al trabajo" /></div>
@@ -466,6 +466,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const CREDIT_CARD_CATEGORY='Tarjeta de credito';
     const CREDIT_CARD_CATEGORY_NAMES=new Set(['tarjeta','tarjeta credito','tarjeta de credito','tarjetas de credito']);
+    const NEW_CARD_VALUE='__new_card__',NEW_SAVINGS_ACCOUNT_VALUE='__new_savings_account__';
     const SAVINGS_CATEGORY='Ahorro';
     const INVESTMENT_CATEGORY='Inversiones';
     const SAVINGS_CATEGORY_NAMES=new Set(['ahorro','ahorros','ahorro libre','fondo de emergencia','fondo emergencia','meta de ahorro','metas de ahorro','compra planeada','compras planeadas']);
@@ -476,6 +477,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
     DEF.recordatorios=[];
     DEF.recurrentes=[];
     DEF.tarjetas=[];
+    DEF.tarjetasPago=[];
+    DEF.cuentasAhorro=[];
     DEF.frecuentes=[];
     DEF.suscripciones=[];
     DEF.pagosMes=[];
@@ -933,6 +936,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
         notas:String(item?.notas||''),
         activo:item?.activo!==false
       })):[];
+      next.tarjetasPago=Array.isArray(src.tarjetasPago)?src.tarjetasPago.map((item)=>String(item||'').trim()).filter(Boolean):[];
+      next.cuentasAhorro=Array.isArray(src.cuentasAhorro)?src.cuentasAhorro.map((item)=>String(item||'').trim()).filter(Boolean):[];
       next.chat=Array.isArray(src.chat)?src.chat:[];
       next.auth=src.auth&&typeof src.auth==='object'?{
         username:String(src.auth.username||''),
@@ -952,6 +957,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
           tipo:String(item?.tipo||'aporte'),
           monto:parseNum(item?.monto),
           fecha:String(item?.fecha||''),
+          cuenta:String(item?.cuenta||''),
           detalle:String(item?.detalle||'')
         })):[]
       }:{basicos:0,ahorrado:0,aportes:[]};
@@ -963,6 +969,59 @@ alter publication supabase_realtime add table public.mf_states;</div>
       ensureSystemCategories(next);
       normalizeInstallmentPayments(next);
       return next;
+    }
+    function uniqueNames(values){
+      const out=[];
+      values.forEach((value)=>{const name=String(value||'').trim();if(name&&!out.some((item)=>normalizedCategoryName(item)===normalizedCategoryName(name)))out.push(name);});
+      return out;
+    }
+    function paymentCardNames(target=data){
+      return uniqueNames([
+        ...(Array.isArray(target?.tarjetasPago)?target.tarjetasPago:[]),
+        ...(Array.isArray(target?.tarjetas)?target.tarjetas.map((item)=>item?.nombre):[]),
+        ...(Array.isArray(target?.movimientos)?target.movimientos.filter((mov)=>mov?.forma==='cuotas').map((mov)=>mov?.cuenta):[])
+      ].filter((name)=>name&&normalizedCategoryName(name)!==normalizedCategoryName(CREDIT_CARD_CATEGORY)));
+    }
+    function savingsAccountNames(target=data){
+      const historicalSavings=(Array.isArray(target?.movimientos)?target.movimientos:[])
+        .filter((mov)=>mov?.categoria===SAVINGS_CATEGORY&&!mov?.esAjusteAhorroPlan&&normalizedCategoryName(mov?.cuenta)!=='ahorro libre')
+        .map((mov)=>mov?.cuenta);
+      const fundAccounts=Array.isArray(target?.fondo?.aportes)?target.fondo.aportes.map((item)=>item?.cuenta):[];
+      return uniqueNames([...(Array.isArray(target?.cuentasAhorro)?target.cuentasAhorro:[]),...historicalSavings,...fundAccounts]);
+    }
+    function rememberNamedValue(collection,name){
+      const clean=String(name||'').trim();if(!clean)return '';
+      data[collection]=Array.isArray(data[collection])?data[collection]:[];
+      if(!data[collection].some((item)=>normalizedCategoryName(item)===normalizedCategoryName(clean)))data[collection].push(clean);
+      return clean;
+    }
+    function cardOptions(selected=''){
+      const names=paymentCardNames();
+      return `<option value="">Seleccionar tarjeta</option>${names.map((name)=>`<option value="${escapeHTML(name)}" ${normalizedCategoryName(name)===normalizedCategoryName(selected)?'selected':''}>${escapeHTML(name)}</option>`).join('')}<option value="${NEW_CARD_VALUE}">+ Agregar nueva tarjeta</option>`;
+    }
+    function savingsAccountOptions(selected='',allowGeneral=false){
+      const names=savingsAccountNames();
+      return `${allowGeneral?'<option value="">Saldo general / sin asignar</option>':'<option value="">Seleccionar cuenta</option>'}${names.map((name)=>`<option value="${escapeHTML(name)}" ${normalizedCategoryName(name)===normalizedCategoryName(selected)?'selected':''}>${escapeHTML(name)}</option>`).join('')}<option value="${NEW_SAVINGS_ACCOUNT_VALUE}">+ Crear nueva cuenta</option>`;
+    }
+    function selectedNamedValue(selectId,inputId,collection){
+      const selected=$(selectId)?.value||'';
+      if(selected===NEW_CARD_VALUE||selected===NEW_SAVINGS_ACCOUNT_VALUE)return rememberNamedValue(collection,$(inputId)?.value);
+      return selected;
+    }
+    function savingsAccountBalanceRows(){
+      const balances=new Map(savingsAccountNames().map((name)=>[normalizedCategoryName(name),{name,total:0}]));
+      const add=(name,amount)=>{const key=normalizedCategoryName(name);if(!key)return;const row=balances.get(key)||{name:String(name).trim(),total:0};row.total+=amount;balances.set(key,row);};
+      (data.movimientos||[]).filter((mov)=>mov?.categoria===SAVINGS_CATEGORY&&!mov?.esAjusteAhorroPlan).forEach((mov)=>add(mov.cuenta,mov.tipo==='ingreso'?-parseNum(mov.monto):parseNum(mov.monto)));
+      (data.fondo?.aportes||[]).forEach((item)=>add(item.cuenta,(item.tipo||'aporte')==='retiro'?-parseNum(item.monto):parseNum(item.monto)));
+      return [...balances.values()].sort((a,b)=>b.total-a.total);
+    }
+    function wireNewValueSelect(selectId,inputId,newValue,optionsHTML){
+      const select=$(selectId),input=$(inputId);if(!select)return;
+      const previous=select.value;
+      if(optionsHTML)select.innerHTML=optionsHTML;
+      if(previous&&[...select.options].some((option)=>option.value===previous))select.value=previous;
+      const refresh=()=>{if(input){input.style.display=select.value===newValue&&!select.disabled?'':'none';input.required=select.value===newValue&&!select.disabled;if(select.value!==newValue)input.value='';}};
+      select.onchange=refresh;refresh();
     }
     function loadLocal(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?mergeWithDefaults(JSON.parse(raw)):clone(DEF);}catch(err){return clone(DEF);}}
     function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
@@ -2069,7 +2128,11 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#movFecha').value=mov?.fecha||todayDateKey();
       $('#movCategoria').value=mov?.categoria||data.categorias[0]||'Otros';
       $('#movForma').value=mov?.forma||'contado';
-      $('#movCuenta').value=mov?.cuenta||'';
+      if($('#movCuenta'))$('#movCuenta').value=mov?.forma==='cuotas'?'':(mov?.cuenta||'');
+      if($('#movTarjeta')){
+        $('#movTarjeta').innerHTML=cardOptions(mov?.forma==='cuotas'?mov?.cuenta:'');
+        $('#movTarjeta').value=mov?.forma==='cuotas'?(paymentCardNames().find((name)=>normalizedCategoryName(name)===normalizedCategoryName(mov?.cuenta))||''):'';
+      }
       $('#movCuotas').value=parseNum(mov?.cuotas)||1;
       $('#movCuotaActual').value=parseNum(mov?.cuotaActual)||1;
       $('#movInicioCobro').value=mov?.inicioCobro||monthKey(mov?.fecha);
@@ -2078,6 +2141,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(save)save.textContent=mov?.id?'Guardar cambios':'Guardar movimiento';
       if(cancel)cancel.style.display=mov?.id?'':'none';
       document.querySelectorAll('.mov-cuotas').forEach((el)=>el.style.display=$('#movForma').value==='cuotas'?'':'none');
+      document.querySelectorAll('.mov-contado').forEach((el)=>el.style.display=$('#movForma').value==='cuotas'?'none':'');
+      const installments=$('#movForma').value==='cuotas';
+      if($('#movTarjeta')){$('#movTarjeta').disabled=!installments;$('#movTarjeta').required=installments;$('#movTarjeta').onchange?.();}
+      if($('#movCuenta'))$('#movCuenta').disabled=installments;
     }
     function resetMovimientoForm(){
       if(!$('#movForm'))return;
@@ -2085,7 +2152,9 @@ alter publication supabase_realtime add table public.mf_states;</div>
       populateMovimientoForm({fecha:todayDateKey(),tipo:'gasto',forma:'contado',cuotas:1,cuotaActual:1,inicioCobro:currentMonth,categoria:data.categorias[0]||'Otros'});
     }
     function readMovimientoForm(){
-      return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma:$('#movForma').value,cuenta:$('#movCuenta').value.trim(),cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),inicioCobro:$('#movInicioCobro').value||monthKey($('#movFecha').value),detalle:$('#movDetalle').value.trim()};
+      const forma=$('#movForma').value;
+      const cuenta=forma==='cuotas'?selectedNamedValue('#movTarjeta','#movTarjetaNueva','tarjetasPago'):$('#movCuenta').value.trim();
+      return{id:$('#movEditId').value||uid(),tipo:$('#movTipo').value,monto:parseNum($('#movMonto').value),fecha:$('#movFecha').value,categoria:$('#movCategoria').value,forma,cuenta,cuotas:Math.max(1,parseNum($('#movCuotas').value||1)),cuotaActual:Math.max(1,parseNum($('#movCuotaActual').value||1)),inicioCobro:$('#movInicioCobro').value||monthKey($('#movFecha').value),detalle:$('#movDetalle').value.trim()};
     }
     function startMovimientoEdit(id){
       const mov=data.movimientos.find((item)=>item.id===id);
@@ -2773,7 +2842,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#btnRelock')?.addEventListener('click',()=>{clearSavedAccess();lockApp('Sesión bloqueada. Ingresá con tu usuario y contraseña.');});
       $('#fabQuick').addEventListener('click',()=>{$('#quickModal').classList.remove('hidden');if(!$('#quickFecha').value)$('#quickFecha').value=todayDateKey();$('#quickMonto').focus();});
       $('#closeQuickModal').addEventListener('click',()=>$('#quickModal').classList.add('hidden'));
-      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||todayDateKey(),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim();data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta:$('#quickCuenta').value.trim(),cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();$('#quickFecha').value=todayDateKey();$('#quickModal').classList.add('hidden');persistAndRender();});
+      wireNewValueSelect('#quickCuenta','#quickCuentaNueva',NEW_CARD_VALUE,cardOptions());
+      $('#quickForm').addEventListener('submit',(event)=>{event.preventDefault();const fecha=$('#quickFecha').value||todayDateKey(),forma=$('#quickForma').value,detalle=$('#quickDetalle').value.trim(),cuenta=forma==='cuotas'?selectedNamedValue('#quickCuenta','#quickCuentaNueva','tarjetasPago'):'';if(forma==='cuotas'&&!cuenta){sync('warn','Selecciona una tarjeta o crea una nueva.');return;}data.movimientos.push({id:uid(),tipo:$('#quickTipo').value,monto:parseNum($('#quickMonto').value),fecha,categoria:$('#quickCategoria').value,forma,cuenta,cuotas:forma==='cuotas'?Math.max(1,parseNum($('#quickCuotas').value||1)):1,cuotaActual:1,inicioCobro:forma==='cuotas'?($('#quickInicioCobro').value||monthKey(fecha)):monthKey(fecha),detalle:detalle||'Carga rapida'});event.target.reset();wireNewValueSelect('#quickCuenta','#quickCuentaNueva',NEW_CARD_VALUE,cardOptions());$('#quickFecha').value=todayDateKey();$('#quickModal').classList.add('hidden');persistAndRender();});
       $('#quickModal').addEventListener('click',(event)=>{if(event.target===$('#quickModal'))$('#quickModal').classList.add('hidden');});
       $('#assistantFab')?.addEventListener('click',()=>$('#assistantModal')?.classList.remove('hidden'));
       $('#closeAssistantModal')?.addEventListener('click',()=>$('#assistantModal')?.classList.add('hidden'));
@@ -3646,10 +3716,12 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function registrarAporteFondo(){
       const monto=parseNum($('#fondoAporteMonto')?.value);
       if(monto<=0)return false;
+      const cuenta=selectedNamedValue('#fondoAporteCuenta','#fondoAporteCuentaNueva','cuentasAhorro');
+      if(!cuenta){sync('warn','Selecciona la cuenta donde guardaste el fondo.');return false;}
       const fecha=$('#fondoAporteFecha')?.value||todayDateKey();
       const detalle=$('#fondoAporteDetalle')?.value.trim()||'Aporte al fondo de emergencia';
       data.fondo.aportes=Array.isArray(data.fondo.aportes)?data.fondo.aportes:[];
-      data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha,detalle});
+      data.fondo.aportes.unshift({id:uid(),tipo:'aporte',monto,fecha,cuenta,detalle});
       data.fondo.ahorrado=parseNum(data.fondo.ahorrado)+monto;
       return true;
     }
@@ -3660,9 +3732,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const monto=Math.min(disponible,solicitado);
       if(monto<=0){sync('warn','No hay saldo disponible en el fondo para retirar.');return false;}
       const fecha=$('#fondoRetiroFecha')?.value||todayDateKey();
+      const cuenta=selectedNamedValue('#fondoRetiroCuenta','#fondoRetiroCuentaNueva','cuentasAhorro');
       const detalle=$('#fondoRetiroDetalle')?.value.trim()||'Retiro del fondo de emergencia';
       data.fondo.aportes=Array.isArray(data.fondo.aportes)?data.fondo.aportes:[];
-      data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto,fecha,detalle});
+      data.fondo.aportes.unshift({id:uid(),tipo:'retiro',monto,fecha,cuenta,detalle});
       data.fondo.ahorrado=Math.max(0,disponible-monto);
       return true;
     }
@@ -3835,7 +3908,13 @@ alter publication supabase_realtime add table public.mf_states;</div>
     renderAhorros=function(){
       let html=finalRenderAhorros();
       const metrics=deriveMetrics(),defaultUsd=blueState.status==='ok'&&blueState.venta?blueState.venta:1200,defaultExpenses=Math.max(0,parseNum(metrics.salidasMes));
+      const accountRows=savingsAccountBalanceRows();
+      const accountsCard=`<div class="large card"><div class="card-head"><div><h2>Ahorro por cuenta</h2><p class="muted">Cada aporte se acumula en la cuenta donde realmente guardaste el dinero.</p></div><span class="pill">${accountRows.length} cuentas</span></div><div class="list">${accountRows.length?accountRows.map((row)=>`<div class="list-item"><div><strong>${escapeHTML(row.name)}</strong><span>Saldo acumulado registrado</span></div><strong>${fmtMoney(row.total)}</strong></div>`).join(''):'<div class="status ok">Cuando registres un ahorro, crea o selecciona la cuenta donde lo guardaste.</div>'}</div></div>`;
       const planner=`<div class="large card" id="retirementPlanner"><div class="card-head"><div><h2>Plan jubilatorio proyectado</h2><p class="muted">Simula cuanto podrias separar y que ingreso pasivo podria generar en dolares.</p></div><span class="pill">20 vs 30 anos</span></div><div class="grid"><div class="medium"><label for="retIncome">Sueldo o ingresos mensuales</label><input id="retIncome" type="number" min="0" step="0.01" value="${Math.round(parseNum(metrics.ingresosMes))}" /></div><div class="medium"><label for="retExpenses">Gastos mensuales estimados</label><input id="retExpenses" type="number" min="0" step="0.01" value="${Math.round(defaultExpenses)}" /></div><div class="medium"><label for="retPct">Porcentaje a ahorrar</label><input id="retPct" type="number" min="0" max="100" step="0.5" value="8" /><div class="setup-actions" style="margin-top:8px"><button type="button" class="btn-soft" data-ret-pct="5">5%</button><button type="button" class="btn-soft" data-ret-pct="8">8%</button><button type="button" class="btn-soft" data-ret-pct="10">10%</button><button type="button" class="btn-soft" data-ret-pct="15">15%</button></div></div><div class="medium"><label for="retYears">Horizonte destacado</label><select id="retYears"><option value="20">20 anos</option><option value="30" selected>30 anos</option></select></div><div class="medium"><label for="retReturn">Rendimiento anual estimado %</label><input id="retReturn" type="number" min="0" max="30" step="0.5" value="5" /></div><div class="medium"><label for="retPassive">Renta anual pasiva %</label><input id="retPassive" type="number" min="0" max="20" step="0.5" value="4" /></div><div class="medium"><label for="retUsd">Dolar de referencia</label><input id="retUsd" type="number" min="1" step="0.01" value="${Math.round(defaultUsd)}" /></div><div class="large"><div class="status warn">Es una simulacion educativa: no contempla impuestos, inflacion, cambios de tipo de cambio ni riesgo de mercado.</div></div></div><div class="list" id="retProjectionResult" style="margin-top:14px"></div></div>`;
+      html=html.replace('<div class="medium card"><div class="card-head"><h2>Ahorro libre</h2>',`${accountsCard}<div class="medium card"><div class="card-head"><h2>Ahorro libre</h2>`);
+      html=html.replace('<form id="ahorroLibreForm" class="grid"><div class="medium"><label for="ahorroLibreMonto">',`<form id="ahorroLibreForm" class="grid"><div class="large"><label for="ahorroLibreCuenta">Cuenta donde lo guardas</label><select id="ahorroLibreCuenta" required>${savingsAccountOptions()}</select><input id="ahorroLibreCuentaNueva" placeholder="ej. Caja de ahorro Galicia" style="display:none;margin-top:8px" /></div><div class="medium"><label for="ahorroLibreMonto">`);
+      html=html.replace('<form id="fondoAporteForm" class="grid"><div class="medium"><label for="fondoAporteMonto">',`<form id="fondoAporteForm" class="grid"><div class="large"><label for="fondoAporteCuenta">Cuenta donde esta el fondo</label><select id="fondoAporteCuenta" required>${savingsAccountOptions()}</select><input id="fondoAporteCuentaNueva" placeholder="ej. Cuenta remunerada" style="display:none;margin-top:8px" /></div><div class="medium"><label for="fondoAporteMonto">`);
+      html=html.replace('<form id="fondoRetiroForm" class="grid" style="margin-top:14px"><div class="medium"><label for="fondoRetiroMonto">',`<form id="fondoRetiroForm" class="grid" style="margin-top:14px"><div class="large"><label for="fondoRetiroCuenta">Retirar desde</label><select id="fondoRetiroCuenta">${savingsAccountOptions('',true)}</select><input id="fondoRetiroCuentaNueva" placeholder="Nombre de la cuenta" style="display:none;margin-top:8px" /></div><div class="medium"><label for="fondoRetiroMonto">`);
       return html.replace('<div class="medium card"><div class="card-head"><h2>Historial jubilatorio</h2>',`${planner}<div class="medium card"><div class="card-head"><h2>Historial jubilatorio</h2>`);
     };
     function budgetDashboard(){
@@ -3936,6 +4015,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const frequentCard=`<div class="medium card"><div class="card-head"><h2>Gastos frecuentes</h2><span class="pill">${frecuentes.length} guardados</span></div><form id="frequentForm" class="grid"><div class="medium"><label for="freqNombre">Nombre</label><input id="freqNombre" required placeholder="ej. Bondi" /></div><div class="medium"><label for="freqMonto">Monto</label><input id="freqMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="freqCategoria">Categoria</label><select id="freqCategoria">${data.categorias.map((cat)=>`<option value="${escapeHTML(cat)}">${escapeHTML(cat)}</option>`).join('')}</select></div><div class="medium"><label for="freqCuenta">Cuenta</label><input id="freqCuenta" placeholder="opcional" /></div><div class="large"><label for="freqDetalle">Nota</label><input id="freqDetalle" placeholder="opcional" /></div><div class="large"><button type="submit">Guardar acceso rapido</button></div></form><div class="list" style="margin-top:12px">${frecuentes.length?frecuentes.map((item)=>`<div class="list-item"><div><strong>${escapeHTML(item.nombre)}</strong><span>${escapeHTML(item.categoria||'Otros')} · ${fmtMoney(parseNum(item.monto))}</span></div><div class="setup-actions" style="margin-top:0"><button type="button" class="btn-soft" data-use-frequent="${item.id}">Usar hoy</button><button type="button" class="btn-danger" data-del-frequent="${item.id}">Eliminar</button></div></div>`).join(''):'<div class="status ok">Guarda consumos repetidos para cargarlos en un toque.</div>'}</div></div>`;
       const toolsCard=`<div class="medium card"><div class="card-head"><h2>Backup, importacion y deshacer</h2><span class="pill">Seguridad</span></div><div class="list"><div class="list-item"><div><strong>Backup completo</strong><span>Descarga toda la app en JSON</span></div><button type="button" class="btn-soft" id="exportJsonBtn">Exportar JSON</button></div><div class="list-item"><div><strong>Movimientos filtrados</strong><span>Descarga el historial visible en CSV</span></div><button type="button" class="btn-soft" id="exportCsvBtn">Exportar CSV</button></div><div class="list-item"><div><strong>Deshacer ultimo movimiento</strong><span>Elimina el movimiento mas reciente si fue un error</span></div><button type="button" class="btn-soft" id="undoLastMovement">Deshacer</button></div></div><label for="importMovText" style="margin-top:12px">Importar movimientos</label><textarea id="importMovText" rows="4" placeholder="fecha,monto,categoria,detalle&#10;2026-05-10,2500,Transporte,Sube"></textarea><button type="button" class="btn-soft" id="importMovBtn" style="margin-top:10px">Importar texto</button></div>`;
       let rendered=finalRenderMovimientos();
+      const paymentAccountField=`<div class="medium mov-contado"><label for="movCuenta">Cuenta</label><input id="movCuenta" placeholder="ej. Cuenta sueldo" /></div><div class="medium mov-cuotas"><label for="movTarjeta">Tarjeta</label><select id="movTarjeta" required>${cardOptions()}</select><input id="movTarjetaNueva" placeholder="Nombre de la nueva tarjeta" style="display:none;margin-top:8px" /></div>`;
+      rendered=rendered.replace('<div class="medium"><label for="movCuenta">Tarjeta / cuenta</label><input id="movCuenta" placeholder="ej. Visa / Cuenta sueldo" /></div>',paymentAccountField);
       const recurringStart=rendered.indexOf('<div class="medium card"><div class="card-head"><h2>Recurrentes del mes</h2>');
       const categoriesStart=rendered.indexOf('<div class="medium card"><div class="card-head"><h2>Categorias personalizadas</h2>',recurringStart);
       if(recurringStart>=0&&categoriesStart>recurringStart)rendered=rendered.slice(0,recurringStart)+rendered.slice(categoriesStart);
@@ -3952,6 +4033,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const finalBindSectionEvents=bindSectionEvents;
     bindSectionEvents=function(){
       finalBindSectionEvents();
+      wireNewValueSelect('#movTarjeta','#movTarjetaNueva',NEW_CARD_VALUE);
+      wireNewValueSelect('#quickCuenta','#quickCuentaNueva',NEW_CARD_VALUE,cardOptions());
+      wireNewValueSelect('#ahorroLibreCuenta','#ahorroLibreCuentaNueva',NEW_SAVINGS_ACCOUNT_VALUE);
+      wireNewValueSelect('#fondoAporteCuenta','#fondoAporteCuentaNueva',NEW_SAVINGS_ACCOUNT_VALUE);
+      wireNewValueSelect('#fondoRetiroCuenta','#fondoRetiroCuentaNueva',NEW_SAVINGS_ACCOUNT_VALUE);
+      const movementFormMode=()=>{const installments=$('#movForma')?.value==='cuotas',cardSelect=$('#movTarjeta'),manualAccount=$('#movCuenta');document.querySelectorAll('.mov-contado').forEach((element)=>element.style.display=installments?'none':'');if(cardSelect){cardSelect.disabled=!installments;cardSelect.required=installments;cardSelect.onchange?.();}if(manualAccount)manualAccount.disabled=installments;};
+      $('#movForma')?.addEventListener('change',movementFormMode);movementFormMode();
+      const quickFormMode=()=>{const installments=$('#quickForma')?.value==='cuotas',cardSelect=$('#quickCuenta');if(cardSelect){cardSelect.disabled=!installments;cardSelect.onchange?.();}};
+      $('#quickForma')?.addEventListener('change',quickFormMode);quickFormMode();
       $('#undoLastMovement')?.addEventListener('click',()=>{const sorted=[...data.movimientos].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))||String(b.id).localeCompare(String(a.id)));if(sorted[0]&&removeMovimiento(sorted[0].id))persistAndRender();});
       $('#importMovBtn')?.addEventListener('click',()=>{const count=importMovementsFromText($('#importMovText')?.value||'');sync(count?'ok':'warn',count?`Se importaron ${count} movimientos.`:'No pude detectar movimientos para importar.');if(count)persistAndRender();});
       document.querySelectorAll('[data-apply-metodo-budgets]').forEach((btn)=>btn.addEventListener('click',()=>{deriveMetodoBudgetPlan().suggestions.forEach((item)=>{data.presupuestos[item.cat]=item.suggested;});persistAndRender();}));
@@ -3968,7 +4058,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       ['#retIncome','#retExpenses','#retPct','#retYears','#retReturn','#retPassive','#retUsd'].forEach((selector)=>$(selector)?.addEventListener('input',updateRetirementProjection));
       document.querySelectorAll('[data-ret-pct]').forEach((btn)=>btn.addEventListener('click',()=>{if($('#retPct'))$('#retPct').value=btn.dataset.retPct;updateRetirementProjection();}));
       updateRetirementProjection();
-      $('#ahorroLibreForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#ahorroLibreMonto')?.value);if(monto<=0)return;data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha:$('#ahorroLibreFecha')?.value||todayDateKey(),categoria:'Ahorro',forma:'contado',cuenta:'Ahorro libre',cuotas:1,cuotaActual:1,inicioCobro:monthKey($('#ahorroLibreFecha')?.value||todayDateKey()),detalle:$('#ahorroLibreDetalle')?.value.trim()||'Ahorro libre'});event.target.reset();$('#ahorroLibreFecha').value=todayDateKey();persistAndRender();});
+      $('#ahorroLibreForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#ahorroLibreMonto')?.value),cuenta=selectedNamedValue('#ahorroLibreCuenta','#ahorroLibreCuentaNueva','cuentasAhorro');if(monto<=0||!cuenta)return;data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha:$('#ahorroLibreFecha')?.value||todayDateKey(),categoria:SAVINGS_CATEGORY,forma:'contado',cuenta,cuotas:1,cuotaActual:1,inicioCobro:monthKey($('#ahorroLibreFecha')?.value||todayDateKey()),detalle:$('#ahorroLibreDetalle')?.value.trim()||`Ahorro en ${cuenta}`});event.target.reset();$('#ahorroLibreFecha').value=todayDateKey();persistAndRender();});
       document.querySelectorAll('[data-cancel-cuota]').forEach((btn)=>btn.addEventListener('click',()=>{if(cancelCreditPurchase(btn.dataset.cancelCuota))persistAndRender();}));
       document.querySelectorAll('[data-go-tab]').forEach((btn)=>btn.addEventListener('click',()=>{activeTab=btn.dataset.goTab||'inicio';renderAll();window.scrollTo({top:0,behavior:'smooth'});}));
       document.querySelectorAll('[data-open-quick]').forEach((btn)=>btn.addEventListener('click',()=>{$('#quickModal')?.classList.remove('hidden');if($('#quickFecha')&&!$('#quickFecha').value)$('#quickFecha').value=todayDateKey();$('#quickMonto')?.focus();}));
