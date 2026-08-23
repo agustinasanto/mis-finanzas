@@ -465,6 +465,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const PRESET_ACCESS={username:'agustinasanto13@gmail.com',salt:'8fd4c3a1c6be4f779e6d2b1a0f5c9a73',passwordHash:'628d94afea4879539138c6e902d7c8b4d810adae65ca3306ca09bbc1b3c87c1a'};
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const CREDIT_CARD_CATEGORY='Tarjeta de credito';
+    const CREDIT_CARD_CATEGORY_NAMES=new Set(['tarjeta','tarjeta credito','tarjeta de credito','tarjetas de credito']);
     const SAVINGS_CATEGORY='Ahorro';
     const INVESTMENT_CATEGORY='Inversiones';
     const SAVINGS_CATEGORY_NAMES=new Set(['ahorro','ahorros','ahorro libre','fondo de emergencia','fondo emergencia','meta de ahorro','metas de ahorro','compra planeada','compras planeadas']);
@@ -789,6 +790,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
     function isSavingsCategory(value){return SAVINGS_CATEGORY_NAMES.has(normalizedCategoryName(value));}
     function canonicalFinanceCategory(value){
       const key=normalizedCategoryName(value);
+      if(CREDIT_CARD_CATEGORY_NAMES.has(key)||/^tarjetas? (de )?cr/.test(key))return CREDIT_CARD_CATEGORY;
       if(SAVINGS_CATEGORY_NAMES.has(key))return SAVINGS_CATEGORY;
       if(INVESTMENT_CATEGORY_NAMES.has(key))return INVESTMENT_CATEGORY;
       if(FUTURE_INVESTMENT_CATEGORY_NAMES.has(key))return INVESTMENT_CATEGORY;
@@ -829,7 +831,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       normalizeCollection(target.pagosMes);
       if(target.presupuestos&&typeof target.presupuestos==='object'){
         const normalizedBudgets={};
-        Object.entries(target.presupuestos).forEach(([key,value])=>{const normalized=canonicalFinanceCategory(key)||key;normalizedBudgets[normalized]=(normalizedBudgets[normalized]||0)+parseNum(value);if(normalized!==key)changed=true;});
+        Object.entries(target.presupuestos).forEach(([key,value])=>{const normalized=canonicalFinanceCategory(key)||key,current=parseNum(normalizedBudgets[normalized]),amount=parseNum(value);normalizedBudgets[normalized]=normalized===CREDIT_CARD_CATEGORY?Math.max(current,amount):current+amount;if(normalized!==key)changed=true;});
         target.presupuestos=normalizedBudgets;
       }
       return changed;
