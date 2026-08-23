@@ -466,10 +466,10 @@ alter publication supabase_realtime add table public.mf_states;</div>
     const TAB_LIST=[['inicio','Inicio'],['movimientos','Movimientos'],['presupuestos','Presupuestos'],['metodo','MÃ©todo mensual'],['inversiones','Inversiones'],['cuotas','Cuotas'],['planes','Compras planeadas'],['fondo','Fondo'],['calendario','Calendario']];
     const CREDIT_CARD_CATEGORY='Tarjeta de credito';
     const SAVINGS_CATEGORY='Ahorro';
-    const INVESTMENT_CATEGORY='Inversiones',RETIREMENT_CATEGORY='Jubilacion';
+    const INVESTMENT_CATEGORY='Inversiones';
     const SAVINGS_CATEGORY_NAMES=new Set(['ahorro','ahorros','ahorro libre','fondo de emergencia','fondo emergencia','meta de ahorro','metas de ahorro','compra planeada','compras planeadas']);
     const INVESTMENT_CATEGORY_NAMES=new Set(['inversion','inversiones']);
-    const RETIREMENT_CATEGORY_NAMES=new Set(['jubilacion','ahorro jubilacion','ahorro jubilatorio','aporte jubilatorio']);
+    const FUTURE_INVESTMENT_CATEGORY_NAMES=new Set(['jubilacion','ahorro jubilacion','ahorro jubilatorio','aporte jubilatorio']);
     const DEF={categorias:['Alquiler','Servicios','Supermercado','Transporte','Moto','Facultad','Gimnasio','Salidas','Compras',CREDIT_CARD_CATEGORY,'Ahorro','Sueldo','Beca','Otros'],movimientos:[],presupuestos:{},inversiones:[],planes:[],fondo:{basicos:0,ahorrado:0},metas:[],chat:[],metodo:{nombre:'50 / 30 / 20',items:[{id:'fijos',nombre:'Gastos fijos y bÃ¡sicos',porcentaje:50,color:'var(--pink-2)'},{id:'ahorro',nombre:'Ahorro general',porcentaje:30,color:'var(--ok)'},{id:'inversion',nombre:'Inversiones',porcentaje:20,color:'var(--warn)'}]}};
     const SUPABASE_TABLE='mf_states';
     DEF.recordatorios=[];
@@ -791,7 +791,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       const key=normalizedCategoryName(value);
       if(SAVINGS_CATEGORY_NAMES.has(key))return SAVINGS_CATEGORY;
       if(INVESTMENT_CATEGORY_NAMES.has(key))return INVESTMENT_CATEGORY;
-      if(RETIREMENT_CATEGORY_NAMES.has(key))return RETIREMENT_CATEGORY;
+      if(FUTURE_INVESTMENT_CATEGORY_NAMES.has(key))return INVESTMENT_CATEGORY;
       return String(value||'').trim();
     }
     function normalizeSavingsData(target){
@@ -805,7 +805,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
       });
       if(!categories.includes(SAVINGS_CATEGORY)){categories.push(SAVINGS_CATEGORY);changed=true;}
       if(!categories.includes(INVESTMENT_CATEGORY)){categories.push(INVESTMENT_CATEGORY);changed=true;}
-      if(!categories.includes(RETIREMENT_CATEGORY)){categories.push(RETIREMENT_CATEGORY);changed=true;}
       target.categorias=categories;
       const normalizeCollection=(items)=>{
         if(!Array.isArray(items))return;
@@ -815,8 +814,8 @@ alter publication supabase_realtime add table public.mf_states;</div>
           let normalized=canonicalFinanceCategory(original);
           const accountCategory=canonicalFinanceCategory(item.cuenta);
           const detailCategory=canonicalFinanceCategory(item.detalle);
-          if(normalized===SAVINGS_CATEGORY&&(accountCategory===INVESTMENT_CATEGORY||accountCategory===RETIREMENT_CATEGORY))normalized=accountCategory;
-          if(normalized===SAVINGS_CATEGORY&&(detailCategory===INVESTMENT_CATEGORY||detailCategory===RETIREMENT_CATEGORY))normalized=detailCategory;
+          if(normalized===SAVINGS_CATEGORY&&accountCategory===INVESTMENT_CATEGORY)normalized=accountCategory;
+          if(normalized===SAVINGS_CATEGORY&&detailCategory===INVESTMENT_CATEGORY)normalized=detailCategory;
           if(normalized===original)return;
           if(!item.cuenta)item.cuenta=original||normalized;
           item.categoria=normalized;
@@ -841,7 +840,6 @@ alter publication supabase_realtime add table public.mf_states;</div>
       if(!target.categorias.includes(CREDIT_CARD_CATEGORY))target.categorias.push(CREDIT_CARD_CATEGORY);
       if(!target.categorias.includes(SAVINGS_CATEGORY))target.categorias.push(SAVINGS_CATEGORY);
       if(!target.categorias.includes(INVESTMENT_CATEGORY))target.categorias.push(INVESTMENT_CATEGORY);
-      if(!target.categorias.includes(RETIREMENT_CATEGORY))target.categorias.push(RETIREMENT_CATEGORY);
       return target;
     }
     function normalizeInstallmentPayments(target){
@@ -3788,14 +3786,15 @@ alter publication supabase_realtime add table public.mf_states;</div>
             inversionesMes=(data.inversiones||[]).filter((i)=>monthKey(i.fecha)===currentMonth).reduce((acc,i)=>acc+parseNum(i.monto),0),
             metasTotal=(data.metas||[]).reduce((acc,meta)=>acc+parseNum(meta.actual),0),
             metasObjetivo=(data.metas||[]).reduce((acc,meta)=>acc+parseNum(meta.objetivo),0),
-            jubilacionRows=(data.movimientos||[]).filter((m)=>m.tipo==='gasto'&&(m.categoria===RETIREMENT_CATEGORY||String(m.cuenta||'').toLowerCase()==='jubilacion')).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))),
+            jubilacionRows=(data.movimientos||[]).filter((m)=>m.tipo==='gasto'&&(String(m.cuenta||'').toLowerCase()==='jubilacion'||normalizedCategoryName(m.detalle).includes('jubil'))).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))),
             jubilacionMes=jubilacionRows.filter((m)=>monthKey(m.fecha)===currentMonth).reduce((acc,m)=>acc+parseNum(m.monto),0),
             jubilacionTotal=jubilacionRows.reduce((acc,m)=>acc+parseNum(m.monto),0),
             ingresosMes=parseNum(metrics.ingresosMes),
             jubilacionSugerida=ingresosMes?ingresosMes*.08:0,
             ahorroLibreRows=(data.movimientos||[]).filter((m)=>m.tipo==='gasto'&&m.categoria==='Ahorro'&&String(m.cuenta||'').toLowerCase()!=='jubilacion').sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,8);
       const libreCard=`<div class="large card"><div class="card-head"><h2>Mapa de ahorros</h2><span class="pill">${escapeHTML(monthLabel(currentMonth))}</span></div><div class="inline-fields"><div class="list-item"><div><strong>Fondo de emergencia</strong><span>${metrics.fondoPct}% de la meta de 6 meses</span></div><div><strong>${fmtMoney(parseNum(data.fondo.ahorrado))}</strong></div></div><div class="list-item"><div><strong>Jubilacion</strong><span>Inversion de largo plazo</span></div><div><strong>${fmtMoney(jubilacionMes)}</strong><span class="muted">este mes</span></div></div><div class="list-item"><div><strong>Inversiones del mes</strong><span>Capital invertido</span></div><div><strong>${fmtMoney(inversionesMes)}</strong></div></div><div class="list-item"><div><strong>Metas especificas</strong><span>${(data.metas||[]).length} objetivos definidos</span></div><div><strong>${fmtMoney(metasTotal)}</strong><span class="muted">de ${fmtMoney(metasObjetivo)}</span></div></div><div class="list-item"><div><strong>Ahorro libre</strong><span>Sin objetivo concreto</span></div><div><strong>${fmtMoney(ahorroLibreMes)}</strong></div></div></div></div><div class="medium card"><div class="card-head"><h2>Jubilacion</h2><span class="pill">Inversion futura</span></div><div class="status ok" style="margin-bottom:12px">Separaste ${fmtMoney(jubilacionMes)} este mes y ${fmtMoney(jubilacionTotal)} en total. Como referencia prudente, podrias apuntar a ${fmtMoney(jubilacionSugerida)} por mes si tus ingresos lo permiten.</div><form id="jubilacionForm" class="grid"><div class="medium"><label for="jubilacionMonto">Monto</label><input id="jubilacionMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="jubilacionFecha">Fecha</label><input id="jubilacionFecha" type="date" required value="${todayDateKey()}" /></div><div class="large"><label for="jubilacionDetalle">Detalle</label><input id="jubilacionDetalle" placeholder="ej. Aporte jubilatorio personal" /></div><div class="large"><button type="submit">Registrar aporte jubilatorio</button></div></form><div class="hint" style="margin-top:12px">Se registra en la categoria Jubilacion: descuenta del balance mensual, pero queda separado del ahorro disponible y de las inversiones actuales.</div></div><div class="medium card"><div class="card-head"><h2>Historial jubilatorio</h2><span class="pill">${jubilacionRows.length} aportes</span></div><div class="list">${jubilacionRows.slice(0,8).length?jubilacionRows.slice(0,8).map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||'Aporte jubilatorio')}</strong><span>${fmtDate(m.fecha)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong><button type="button" class="btn-danger" data-del-mov="${m.id}" style="margin-top:8px">Eliminar</button></div></div>`).join(''):'<div class="status ok">Todavia no registraste aportes jubilatorios.</div>'}</div></div><div class="medium card"><div class="card-head"><h2>Ahorro libre</h2><span class="pill">Sin objetivo</span></div><form id="ahorroLibreForm" class="grid"><div class="medium"><label for="ahorroLibreMonto">Monto</label><input id="ahorroLibreMonto" type="number" min="0" step="0.01" required /></div><div class="medium"><label for="ahorroLibreFecha">Fecha</label><input id="ahorroLibreFecha" type="date" required value="${todayDateKey()}" /></div><div class="large"><label for="ahorroLibreDetalle">Detalle</label><input id="ahorroLibreDetalle" placeholder="ej. Lo separo para guardar" /></div><div class="large"><button type="submit">Registrar ahorro libre</button></div></form><div class="hint" style="margin-top:12px">Esto se guarda como movimiento en categoria Ahorro para que descuente del balance mensual, sin atarlo a una meta.</div></div><div class="medium card"><div class="card-head"><h2>Ultimos ahorros libres</h2><span class="pill">${ahorroLibreRows.length} registros</span></div><div class="list">${ahorroLibreRows.length?ahorroLibreRows.map((m)=>`<div class="list-item"><div><strong>${escapeHTML(m.detalle||'Ahorro libre')}</strong><span>${fmtDate(m.fecha)}</span></div><div><strong>${fmtMoney(parseNum(m.monto))}</strong><button type="button" class="btn-danger" data-del-mov="${m.id}" style="margin-top:8px">Eliminar</button></div></div>`).join(''):'<div class="status ok">Todavia no registraste ahorro libre.</div>'}</div></div>`;
-      return sectionTemplate('ahorros',`${libreCard}${sectionInner(renderFondo())}${sectionInner(renderInversiones())}`);
+      const groupedFutureCard=libreCard.replace('Se registra en la categoria Jubilacion: descuenta del balance mensual, pero queda separado del ahorro disponible y de las inversiones actuales.','Se registra en la categoria Inversiones y se identifica con la cuenta Jubilacion. Descuenta del balance mensual, pero queda separado del ahorro disponible.');
+      return sectionTemplate('ahorros',`${groupedFutureCard}${sectionInner(renderFondo())}${sectionInner(renderInversiones())}`);
     }
     function fmtUSD(value){
       return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(parseNum(value)||0);
@@ -3963,7 +3962,7 @@ alter publication supabase_realtime add table public.mf_states;</div>
       $('#paymentForm')?.addEventListener('submit',(event)=>{event.preventDefault();data.pagosMes=data.pagosMes||[];data.pagosMes.unshift({id:uid(),nombre:$('#payNombre').value.trim(),monto:parseNum($('#payMonto').value),fecha:$('#payFecha').value,categoria:$('#payCategoria').value,estado:'pendiente'});event.target.reset();persistAndRender();});
       document.querySelectorAll('[data-toggle-payment]').forEach((btn)=>btn.addEventListener('click',()=>{const item=(data.pagosMes||[]).find((row)=>row.id===btn.dataset.togglePayment);if(!item)return;item.estado=item.estado==='hecho'?'pendiente':'hecho';persistAndRender();}));
       document.querySelectorAll('[data-del-payment]').forEach((btn)=>btn.addEventListener('click',()=>{data.pagosMes=(data.pagosMes||[]).filter((item)=>item.id!==btn.dataset.delPayment);persistAndRender();}));
-      $('#jubilacionForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#jubilacionMonto')?.value);if(monto<=0)return;const fecha=$('#jubilacionFecha')?.value||todayDateKey();data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha,categoria:RETIREMENT_CATEGORY,forma:'contado',cuenta:'Jubilacion',cuotas:1,cuotaActual:1,inicioCobro:monthKey(fecha),detalle:$('#jubilacionDetalle')?.value.trim()||'Aporte jubilatorio'});event.target.reset();$('#jubilacionFecha').value=todayDateKey();persistAndRender();});
+      $('#jubilacionForm')?.addEventListener('submit',(event)=>{event.preventDefault();const monto=parseNum($('#jubilacionMonto')?.value);if(monto<=0)return;const fecha=$('#jubilacionFecha')?.value||todayDateKey();data.movimientos.unshift({id:uid(),tipo:'gasto',monto,fecha,categoria:INVESTMENT_CATEGORY,forma:'contado',cuenta:'Jubilacion',cuotas:1,cuotaActual:1,inicioCobro:monthKey(fecha),detalle:$('#jubilacionDetalle')?.value.trim()||'Aporte jubilatorio'});event.target.reset();$('#jubilacionFecha').value=todayDateKey();persistAndRender();});
       ['#retIncome','#retExpenses','#retPct','#retYears','#retReturn','#retPassive','#retUsd'].forEach((selector)=>$(selector)?.addEventListener('input',updateRetirementProjection));
       document.querySelectorAll('[data-ret-pct]').forEach((btn)=>btn.addEventListener('click',()=>{if($('#retPct'))$('#retPct').value=btn.dataset.retPct;updateRetirementProjection();}));
       updateRetirementProjection();
